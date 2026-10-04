@@ -1,0 +1,15 @@
+.gradle/
+build/
+.kotlin/
+*.class
+*.log
+.idea/
+*.iml
+.vscode/
+.DS_Store
+.env
+.env.*
+local.properties
+*.jks
+*.keystore
+*.gpg

@@ -1,0 +1,7 @@
+# Generated and snapshot files are text with LF endings on every platform:
+# the generation test compares bytes.
+* text=auto eol=lf
+*.bat text eol=crlf
+gradle/wrapper/gradle-wrapper.jar binary
+openapi/openapi.json -diff linguist-generated
+rewloy/src/main/kotlin/com/rewloy/generated/** linguist-generated
