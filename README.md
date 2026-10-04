@@ -1,0 +1,580 @@
+# Rewloy Kotlin
+
+**Rewloy API'nin resmî Kotlin, Java ve Android kütüphanesi.**
+
+> **Durum: önizleme (0.x), yayımlanmadı; API kararlı, kütüphane arayüzü 1.0'a kadar değişebilir.**
+
+[Rewloy](https://rewloy.com), işletmelerin dijital sadakat kartlarını
+müşterinin telefonuna koyar. Kart türleri damga, puan, VIP, cashback, hediye
+kartı, kupon ve indirimdir:
+- iPhone'da Apple Cüzdan;
+- Android'de Rewloy Cüzdan ve Google Cüzdan;
+- her yerde web kartı.
+
+Kasada QR okutulur; bakiye, ödül ve kampanyalar kartın kendisinde güncellenir.
+Panelde yapılabilen her şey [Rewloy API v1](https://rewloy.com/gelistiriciler)
+ile de yapılabilir. Bu kütüphane onu **Android POS terminallerinden ve yeni
+nesil yazar kasalardan** (çoğu Android çalıştırır), ayrıca her JVM'den (Java ve
+Kotlin) kullanır. Bir Android uygulaması değil, kütüphanedir; Android SDK'sı
+gerekmez.
+
+- **Tam tipli.** API'nin her işlemi, `operationId` adıyla bir metottur. İstek
+  gövdeleri, sorgular ve yanıtlar OpenAPI belgesinden
+  ([`openapi.json`](https://app.rewloy.com/v1/openapi.json)) üretilen sınıflarla
+  gelir. CI belgeyi her gün okur ve değişince yeniden üretir.
+- **Eski kasalara uyar.** JVM 8 bayt kodu, Android 5.0 (API 21) ve üstü. Tek
+  bağımlılığı Kotlin standart kütüphanesidir; HTTP için her JVM'de ve Android'de
+  bulunan `HttpURLConnection` kullanılır (`java.net.http` Android'de yoktur).
+- **Java'dan rahat.** Metotlar bloklar, istisnalar denetimsizdir, sayfalama ve
+  akış `for` ile dolaşılır. Kotlin'de `suspend` ve `Flow` için ayrı, isteğe
+  bağlı bir paket vardır.
+- **Güvenli tekrar.** Geçici hatalarda ölçülü yeniden deneme; kasa işleminde ve
+  kampanyada `Idempotency-Key`.
+- **Ötesi:** sayfalama, canlı akış (SSE), webhook imzası doğrulama, iptal,
+  kullanımdan kalkma bildirimleri, test modu.
+
+## Kurulum
+
+Maven Central'da yayımlanana kadar kaynağından derleyin (JDK 17 ya da üstü
+Gradle için gerekir; kütüphane JVM 8 için derlenir):
+
+```sh
+git clone https://github.com/Rewloy/rewloy-kotlin
+cd rewloy-kotlin
+./gradlew publishToMavenLocal
+```
+
+Sonra projenizde `mavenLocal()` açıkken:
+
+```kotlin
+dependencies {
+    implementation("com.rewloy:rewloy:0.1.0")
+    // isteğe bağlı:
+    implementation("com.rewloy:rewloy-okhttp:0.1.0")      // OkHttp taşıyıcısı
+    implementation("com.rewloy:rewloy-coroutines:0.1.0")  // suspend ve Flow
+}
+```
+
+Yayımlandığında `mavenLocal()` gerekmez; koordinatlar aynıdır. Kotlin
+kullanıyorsanız derleyiciniz 2.0 ya da üstü olmalıdır; yalnız Java
+kullanıyorsanız Kotlin derleyicisine gerek yoktur.
+
+## Başlarken
+
+```kotlin
+import com.rewloy.Rewloy
+
+val rewloy = Rewloy { apiKey(System.getenv("REWLOY_API_KEY")) }
+
+val kart = rewloy.getPass("ABCD-EFGH-JKLM")
+println("${kart.type} ${kart.balance} ${kart.rewardReady}")
+```
+
+Java:
+
+```java
+Rewloy rewloy = new Rewloy(RewloyOptions.builder().apiKey(System.getenv("REWLOY_API_KEY")).build());
+GetPassData kart = rewloy.getPass("ABCD-EFGH-JKLM");
+```
+
+**Metotlar bloklar.** Bir çağrı yanıt gelene kadar bekler; Android'de ana
+iş parçacığında çağırmayın (iş parçacığı, `Executor` ya da Kotlin için
+`rewloy-coroutines`). İstemci iş parçacığı güvenlidir ve programınız boyunca
+yaşamak üzere tasarlanmıştır: bir tane yapın, paylaşın.
+
+Her işlem, adı `operationId` olan bir metottur
+([API referansı](https://rewloy.com/gelistiriciler/api)). Argümanlar sırayla:
+adresteki parametreler (`serial`, `id`…), varsa gövde, varsa sorgu, sonra
+`RequestOptions`:
+
+```kotlin
+rewloy.passAction(serial, PassActionBody("earn-stamps", locationId), RequestOptions(idempotencyKey = "fis-$fisNo"))
+rewloy.listCustomers(ListCustomersQuery(q = "ayşe", limit = 50))
+```
+
+- **Gövde ve sorgu sınıfları.** `PassActionBody`, `ListCustomersQuery`… Zorunlu
+  alanlar kurucudadır; Kotlin'de gerisi adlandırılmış argümandır
+  (`ListCustomersQuery(limit = 50)`), Java'da yalnız zorunlu alanları alan bir
+  kurucu ve `setX` metotları vardır. Verilmeyen alan gönderilmez. Bir alanı
+  `null` olarak göndermek gereken yerlerde (`correctHolderProfile`…)
+  `OptionalField.of(değer)` ve `OptionalField.ofNull()` kullanılır.
+- **Yanıtlar.** `data` döner: bir sınıf, sayfalı listede `Page<Öğe>` (`data` ve
+  `meta`), gövdesiz yanıtta (`204`) `Unit`, dosyada (QR, harita, CSV, `.pkpass`)
+  `RewloyFile`, OpenAPI belgesinde `JsonValue`.
+- **Tarih ve kimlik** alanları `String`'dir (kimlikler UUID, tarihler ISO 8601
+  metni): Android 8'in altında `java.time` yoktur.
+- **Biçimi belli olmayan** alanlar `JsonValue`'dur (`asString()`, `asLong()`,
+  `asObject()`…); kütüphanenin kendi küçük JSON okuyucusu vardır.
+- **API yeni alan eklerse** yanıt sınıfındaki `additionalProperties` onu tutar;
+  istekte `setAdditionalProperty(ad, değer)` yeni bir alanı kütüphane
+  güncellenmeden gönderir.
+- **Yanıt belgelenen tipe uymazsa** (zorunlu bir alan yok ya da başka tipte)
+  `INVALID_RESPONSE` kodlu `RewloyException` atılır; `body` ham yanıtı, `detail`
+  yolunu söyler (`$.data.serial`). İşlem sunucuda yapılmış olabilir:
+  `Idempotency-Key` ile tekrar aynı sonucu verir.
+
+### Kimlik
+
+| İstemci | Ne için |
+|---|---|
+| `Rewloy { apiKey("rwk_…") }` | API anahtarı: kasa, e-ticaret, kendi sisteminiz |
+| `Rewloy { staffSession("rws_…"); merchant(isletmeId) }` | ekip oturumu: bir kişinin işletme uygulaması |
+| `Rewloy { holderSession("rwh_…") }` | kart sahibi oturumu: Rewloy Cüzdan gibi müşteri uygulamaları |
+| `Rewloy()` | kimlik istemeyen uç noktalar: giriş, katılım, kod |
+
+`merchant`, ekip oturumu birden fazla işletmede koltuk taşıyorsa hangi işletme
+için çalıştığını söyler (`Rewloy-Merchant`); her çağrıda
+`RequestOptions(merchant = …)` ile değiştirilebilir. Oturumlar kimliksiz bir
+istemciyle açılır:
+
+```kotlin
+val oturum = Rewloy().login(LoginBody(email, password))
+val ekip = Rewloy { staffSession(oturum.token); merchant(isletmeId) }
+if (oturum.mfaRequired) ekip.proveMfa(ProveMfaBody("123456"))
+```
+
+Bir işlem istemcinin kimlik türünü kabul etmiyor ama kimliksiz de çalışıyorsa
+(örneğin `login`), istemci onu kimliksiz çağırır. Yanlış öneki olan ya da iki
+kimlik verilmiş bir istemci kurulurken `IllegalArgumentException` atar; mesajı
+anahtarın kendisini içermez.
+
+Diğer seçenekler (`Rewloy { … }` ya da `RewloyOptions.builder()`):
+- `baseUrl` (varsayılan `https://app.rewloy.com`);
+- `timeoutMs` (60000): bir denemenin tamamı için;
+- `maxRetries` (2);
+- `userAgent`: gönderilen `User-Agent`a eklenir, örneğin `"KasaPOS/4.2"`;
+- `transport`: HTTP katmanı (aşağıda);
+- `deprecationListener` ve `sleeper`.
+
+## Kart vermek ve kasada işlem
+
+```kotlin
+val kart = rewloy.issuePass(IssuePassBody(programId = programId, email = "ayse@ornek.com", firstName = "Ayşe", kvkkConsent = true))
+println(kart.serial + " " + kart.cardUrl)
+
+val sonuc = rewloy.passAction(
+    kart.serial,
+    PassActionBody("earn-stamps", locationId).apply { count = 1 },
+    RequestOptions(idempotencyKey = "fis-$fisNo"),
+)
+if (sonuc.duplicate) println("Bu fiş zaten işlenmiş")
+```
+
+`passAction` ve `sendCampaign` bir `Idempotency-Key` ister. Verilmezse kütüphane
+bir UUID üretir ve aynı çağrının her denemesinde aynısını gönderir. Kasada fiş
+numarası gibi kendi anahtarınızı vermek daha iyidir: uygulama çöküp yeniden
+başlasa bile aynı fiş ikinci kez işlenmez, aynı anahtarla tekrar ilk sonucu
+`duplicate: true` ile döndürür.
+
+## Sayfalama
+
+```kotlin
+for (musteri in rewloy.listCustomersAll(ListCustomersQuery(consent = "yes", limit = 200))) {
+    println("${musteri.displayName} ${musteri.email}")
+}
+```
+
+`…All` sayfalı her listeyi (`page`/`limit` ve `meta`) öğe öğe dolaşır ve son
+sayfada durur; hiçbir şey dolaşma başlayana kadar istenmez, ve her `iterator()`
+baştan başlar. Tek bir sayfa için metodun kendisi yeter:
+`val sayfa = rewloy.listCustomers(ListCustomersQuery(page = 2)); sayfa.data; sayfa.meta`.
+
+## Canlı akış
+
+```kotlin
+thread {
+    rewloy.liveFeed().use { akis ->
+        for (olay in akis) {
+            if (olay.event == "event") println(olay.json())
+        }
+    }
+}
+```
+
+`liveFeed` (işletmenin tezgâh akışı) ve `holderCardEvents` (kart sahibinin
+kartındaki değişiklik) sunucu olayları (`text/event-stream`) yayınlar.
+Dolaşma **bloklar**: bir iş parçacığında çalıştırın. Java'da
+`try (EventStream akis = rewloy.liveFeed()) { for (ServerSentEvent olay : akis) … }`.
+
+- **Yeniden bağlanma.** Bağlantı koparsa akış kendiliğinden yeniden bağlanır:
+  sunucunun `retry:` süresi kadar bekler, bir olay `id` taşıdıysa
+  `Last-Event-ID` gönderir. `RequestOptions(reconnect = false)` bunu kapatır.
+- **Sessiz bağlantı.** API 25 saniyede bir `: hb` gönderir; 60 saniye hiç veri
+  gelmezse bağlantı kopmuş sayılır (`idleTimeoutMs`).
+- **Durdurmak:** `akis.close()` (başka bir iş parçacığından da), `CancelToken`
+  ya da döngüden çıkıp `use` bloğunu bitirmek; akış sessizce biter.
+- **Bitiren hatalar.** Yeniden bağlanmanın düzeltemeyeceği bir hata (`401`,
+  `403`, `404`) dolaşmayı `RewloyException` ile bitirir.
+
+## İptal
+
+```kotlin
+val iptal = CancelToken()
+thread { rewloy.passAction(serial, govde, RequestOptions(cancel = iptal)) }
+// ekran kapanırken:
+iptal.cancel()
+```
+
+İptal, bekleyen isteğin bağlantısını kapatır, bekleyen bir yeniden denemeyi
+keser ve çağrı `java.util.concurrent.CancellationException` atar. Bir istemcinin
+bütün çağrılarını bir jetona bağlamak için `rewloy.withCancel(jeton)`.
+
+## Webhook doğrulama
+
+Rewloy her teslimi imzalar:
+
+```
+Rewloy-Signature: t=<unix saniye>,v1=<hex HMAC-SHA256(sır, "<t>.<ham gövde>")>
+```
+
+`Webhook.verify` imzayı **ham gövdeyle** ve webhook oluşturulurken bir kez
+gösterilen sırla (`whsec_…`) doğrular:
+- karşılaştırmayı sabit sürede yapar;
+- `t` şimdiden 300 saniyeden (`toleranceSeconds`) uzaksa reddeder;
+- gövdeyi ayrıştırılmış olarak döndürür (`WebhookEvent`).
+
+Tutmazsa `WebhookSignatureException` atar (`reason`: `MISSING`, `MALFORMED`,
+`EXPIRED`, `MISMATCH`, `PAYLOAD`): 400 ile yanıtlayın ve hiçbir işlem yapmayın.
+Gövde mutlaka ham olmalıdır: JSON olarak ayrıştırılıp yeniden yazılan bir gövde
+imzayı tutturmaz. Birden çok sır verilebilir (bir webhook'tan ötekine
+geçerken).
+
+```kotlin
+// Ktor
+post("/rewloy/webhook") {
+    val ham = call.receive<ByteArray>()
+    val olay = try {
+        Webhook.verify(ham, call.request.header("Rewloy-Signature"), System.getenv("REWLOY_WEBHOOK_SECRET"))
+    } catch (e: WebhookSignatureException) {
+        return@post call.respond(HttpStatusCode.BadRequest)
+    }
+    // Rewloy-Delivery bir teslimin her denemesinde aynıdır: işlediyseniz atlayın.
+    olay.passData?.let { println("${it.card} ${it.kind} ${it.delta}") }
+    call.respond(HttpStatusCode.OK)
+}
+```
+
+```java
+// Servlet
+byte[] raw = request.getInputStream().readAllBytes();   // Java 9+; ya da kendi okuyucunuz
+try {
+    WebhookEvent event = Webhook.verify(raw, request.getHeader("Rewloy-Signature"), secret);
+    if ("pass.activity".equals(event.getType())) { … }
+    response.setStatus(200);
+} catch (WebhookSignatureException e) {
+    response.setStatus(400);
+}
+```
+
+Başlıklar:
+- `Rewloy-Event`: olay türü (`pass.issued`, `pass.activity`, `pass.voided`,
+  `webhook.test`); gövdedeki `type` ile aynı.
+- `Rewloy-Delivery`: teslimin kimliği. Teslim "en az bir kez"dir: çift gelen
+  teslimi bununla ayıklayın.
+
+Gövde kişinin iletişim bilgisini taşımaz; kişiyi `customer_id` ile API'den
+okuyun. 2xx dışı bir yanıt yaklaşık 45 saat boyunca 8 kez yeniden denenir ve
+her deneme yeni bir `t` ile imzalanır. Kendi işleyicinizi test etmek için
+`Webhook.sign(gövde, sır)` aynı başlığı üretir.
+
+## Hatalar ve yeniden deneme
+
+```kotlin
+try {
+    rewloy.passAction(serial, govde, RequestOptions(idempotencyKey = "fis-$fisNo"))
+} catch (e: RateLimitException) {
+    println("${e.retryAfterSeconds} saniye sonra yeniden deneyin")
+} catch (e: RewloyException) {
+    if (e.code == ErrorCode.INSUFFICIENT_BALANCE) println(e.detail) else throw e
+}
+```
+
+`RewloyException` denetimsizdir ve şunları taşır:
+- `status`: HTTP durumu;
+- `code`: API'nin sabit kodu ([hata kodları](https://rewloy.com/gelistiriciler/hatalar),
+  `ErrorCode` sabitleri); kodunuz buna göre davranmalı;
+- `title`: kodun katalogdaki başlığı;
+- `detail`: API'nin açıklaması (Türkçe, değişebilir);
+- `details`: varsa ayrıntı (`JsonValue`); doğrulama hatasında
+  `[{ field, rule, message }]`;
+- `requestId`: `x-request-id`; destek talebinde bunu verin;
+- `body`, `headers` ve `operation`.
+
+Alt sınıflar:
+- `RateLimitException`: `429`; `retryAfterSeconds`;
+- `RewloyConnectionException`: yanıt gelmedi (`status` 0, `code`
+  `CONNECTION_ERROR`);
+- `RewloyTimeoutException`: zaman aşımı (`TIMEOUT`).
+
+Rewloy'un olmayan bir hata gövdesi (örneğin bir vekil sunucunun 502 sayfası)
+`HTTP_502` gibi bir kodla gelir.
+
+**Yeniden deneme.** Şunlar en çok `maxRetries` kez (varsayılan 2) yeniden
+denenir: bağlantı hatası, zaman aşımı, `429`, `502`, `503`, `504` ve
+Cloudflare'in `520`–`524` hataları.
+- **Bekleme:** üstel ve rastgele (0,5 sn, 1 sn, 2 sn… en çok 8 sn); yanıt
+  `Retry-After` taşıyorsa o kadar. `Retry-After` 60 saniyeden uzunsa
+  beklenmez, hata size gelir.
+- **Yalnız tekrarı güvenli istekler:** `GET`, `PUT`, `DELETE` ve
+  `Idempotency-Key` taşıyan `POST`. İlk istek hâlâ işlenirken gelen
+  `409 IDEMPOTENCY_IN_PROGRESS` de beklenip yeniden denenir. Diğer `POST` ve
+  `PATCH` istekleri hiç tekrar edilmez.
+- **Süre:** her deneme `timeoutMs` (varsayılan 60 sn) içinde bitmelidir.
+
+## Kullanımdan kalkma
+
+Kalkacak bir uç nokta en az 180 gün önceden duyurulur. O süre boyunca her
+yanıt `Deprecation`, `Sunset` ve `Link` başlıklarını taşır.
+
+- **Bildirim.** Kütüphane her işlem için bir kez `DeprecationListener`ı çağırır
+  (`Rewloy { deprecationListener { n -> log.warn(n.message) } }`). Dinleyici
+  yoksa bildirim `com.rewloy` günlükçüsüne (`java.util.logging`; Android'de
+  Logcat'e gider) işlem başına bir kez yazılır.
+- **Tipler.** O metot ve alan `@Deprecated` olarak işaretlenir; derleyiciniz
+  uyarır.
+
+## Yanıtın tamamı ve test modu
+
+```kotlin
+val yanit = rewloy.sendCampaignWithResponse(SendCampaignBody("Bu hafta kahveler 2 damga!"), RequestOptions(idempotencyKey = "kampanya-2026-10-03"))
+yanit.statusCode  // 201
+yanit.replayed    // true: aynı anahtarın ilk yanıtı yeniden döndü (Idempotent-Replayed)
+yanit.requestId   // x-request-id
+yanit.mode        // Rewloy-Mode
+yanit.isTestMode  // mode == "test"
+yanit.data        // kampanya
+```
+
+Sonu `WithResponse` olan her metot yanıtın tamamını döndürür: `data`, sayfalı
+listede `meta`, `statusCode`, `headers`, `requestId`, `mode` ve `replayed`.
+
+`mode`, yanıtın `Rewloy-Mode` başlığıdır. Test anahtarlarıyla (`rwk_test_…`)
+yapılan çağrılar gerçek mesaj göndermez, gerçek kart vermez; yanıtlar bunu bu
+başlıkla söyler. Başlık yoksa `null`. Canlı akışta aynı bilgi `akis.mode`dadır.
+
+İşlem tablosu da dışa açıktır: `RewloyOperations.passAction` →
+`OperationInfo` (`method`, `path`, `credentials`, `idempotency`, `isPaged`,
+`isStream`, `deprecation`…).
+
+## HTTP katmanı
+
+Varsayılan taşıyıcı `HttpURLConnection`'dır: her JVM'de ve her Android
+sürümünde vardır, ek bağımlılık gerektirmez. Yönlendirmeleri izlemez.
+
+- **`PATCH`.** Android'in `HttpURLConnection`'ı `PATCH` gönderir. Masaüstü JDK'sı
+  göndermez: Java 11'e kadar kütüphane bunu aşar; Java 12 ve üstünde `PATCH`
+  (API'nin 237 işleminden 11'i) `UnsupportedOperationException` atar ve
+  `rewloy-okhttp`'a yönlendirir. Sunucu tarafında Java 12+ kullanıyorsanız
+  OkHttp taşıyıcısını kullanın.
+- **OkHttp.** Uygulamanızda zaten bir `OkHttpClient` (kendi havuzu, vekil ve
+  sertifika ayarları, interceptor'ları) varsa:
+  `Rewloy { apiKey(…); transport(OkHttpTransport(okHttpClient)) }`
+  (`com.rewloy:rewloy-okhttp`).
+- **Kendi taşıyıcınız.** `Transport` tek metotlu bir arayüzdür (`execute`);
+  test ikizi, vekil ya da izleme için yazın.
+
+## Kotlin: coroutines
+
+`com.rewloy:rewloy-coroutines`:
+
+```kotlin
+val kart = rewloy.suspending { getPass("ABCD-EFGH-JKLM") }          // Dispatchers.IO'da çalışır
+rewloy.suspending { liveFeed() }.asFlow().collect { println(it.json()) }
+```
+
+`suspending` bloğu `Dispatchers.IO`'da çalıştırır; coroutine iptal edilince
+uçuştaki istek de iptal edilir. 237 metodun bir de `suspend` ikizini
+üretmek yerine tek bir genel sarmalayıcı verilir: blok içinde birkaç çağrı
+yapabilir, sayfalı bir listeyi dolaşabilirsiniz.
+
+## Geliştirme
+
+```sh
+./gradlew generate                                  # canlı belgeden: openapi/openapi.json ve rewloy/src/main/kotlin/com/rewloy/generated/
+./gradlew generate -Pfile=openapi/openapi.json      # kayıtlı belgeden
+./gradlew check                                     # bütün testler, Android API 21 denetimi
+./gradlew test -PtestJava=8                         # testleri Java 8 çalışma zamanında koşar
+```
+
+- `generated/` elle düzenlenmez; üreteç `generator/` altındadır (Kotlin; kütüphane
+  ile aynı JSON okuyucuyu kullanır).
+- Testler ağa çıkmaz: yerel bir sahte HTTP sunucusuyla (`com.sun.net.httpserver`)
+  çalışır.
+- CI her gün canlı belgeyi okur ve bir değişiklik varsa bir pull request açar.
+- Kararlar: [docs/DECISIONS.md](docs/DECISIONS.md).
+
+### Yayımlamak
+
+Maven Central yapılandırması hazır, çalıştırılmadı. Gerekenler:
+- Sonatype **Central Portal** hesabı ve `com.rewloy` ad alanının doğrulanması
+  (`rewloy.com` alan adının DNS TXT kaydıyla);
+- Bir GPG imza anahtarı;
+- GitHub'da `Rewloy/rewloy-kotlin` deposu (POM'daki adres).
+
+Sonra:
+
+```sh
+export ORG_GRADLE_PROJECT_mavenCentralUsername=…       # Portal kullanıcı belirteci
+export ORG_GRADLE_PROJECT_mavenCentralPassword=…
+export ORG_GRADLE_PROJECT_signingInMemoryKey="$(gpg --armor --export-secret-keys KEYID)"
+export ORG_GRADLE_PROJECT_signingInMemoryKeyPassword=…
+./gradlew publishToMavenCentral                        # Portal'da elle yayımlanır (automaticRelease kapalı)
+```
+
+`./gradlew publishAllPublicationsToVerifyRepository` aynı paketleri imzasız
+olarak `build/verify-repo` altına yazar: yayımlanacakları görmek için.
+
+## Belgeler
+
+| | |
+|---|---|
+| Başlarken | https://rewloy.com/gelistiriciler |
+| API referansı | https://rewloy.com/gelistiriciler/api |
+| OpenAPI 3.1 | https://app.rewloy.com/v1/openapi.json |
+| Hata kodları | https://rewloy.com/gelistiriciler/hatalar |
+| API'nin değişiklik günlüğü | https://rewloy.com/gelistiriciler/degisiklikler |
+| Bu kütüphanenin değişiklikleri | [CHANGELOG.md](CHANGELOG.md) |
+
+**Sürümler:**
+- Kütüphane anlamsal sürümleme ([SemVer](https://semver.org)) kullanır. 1.0'a
+  kadar arayüzü değişebilir.
+- API'ye alan eklemek geriye uyumludur; kütüphanenin sınıfları her gün
+  güncellenir ve yeni alanlar o güne kadar `additionalProperties`te görünür.
+- Kalkacak bir uç nokta en az 180 gün önce duyurulur ve bu süre boyunca
+  `Deprecation` ve `Sunset` başlıklarını taşır.
+
+## Güvenlik
+
+Bir güvenlik açığı bulursanız [SECURITY.md](SECURITY.md) dosyasındaki yoldan
+özel olarak bildirin. Lütfen herkese açık issue açmayın.
+
+## Lisans
+
+[MIT](LICENSE)
+
+---
+
+## English
+
+**The official Kotlin, Java and Android library for the Rewloy API.**
+
+> **Status: preview (0.x), not published yet. The API is stable; the
+> library's interface may change until 1.0.**
+
+The documentation of the API itself is in Turkish (links above). In short:
+
+- A **library, not an Android app**, for Android POS terminals and the new
+  generation of Turkish cash registers (most of which run Android), and for any
+  JVM. No Android SDK is needed to build it.
+- Every operation of the API is a method named by its `operationId`, with
+  classes for request bodies, queries and answers, generated from the OpenAPI
+  document, which CI reads daily and regenerates from.
+- **JVM 8 bytecode, Android 5.0 (API 21) and up.** The only dependency is the
+  Kotlin standard library; HTTP goes through `HttpURLConnection` (there is no
+  `java.net.http` on Android) behind a small `Transport` interface, and an
+  optional OkHttp adapter exists.
+- Blocking calls, usable from Java; an optional artifact adds `suspend` and `Flow`.
+- Safe retries, `Idempotency-Key` handling, pagination, server-sent events,
+  webhook signature verification, cancelling and deprecation notices.
+
+### Install
+
+Until it is on Maven Central, build it from source (Gradle needs JDK 17 or
+later; the library itself targets JVM 8):
+
+```sh
+git clone https://github.com/Rewloy/rewloy-kotlin && cd rewloy-kotlin && ./gradlew publishToMavenLocal
+```
+
+```kotlin
+dependencies {
+    implementation("com.rewloy:rewloy:0.1.0")
+    implementation("com.rewloy:rewloy-okhttp:0.1.0")      // optional: an OkHttp transport
+    implementation("com.rewloy:rewloy-coroutines:0.1.0")  // optional: suspend and Flow
+}
+```
+
+A Kotlin caller needs a Kotlin 2.0 or later compiler; a Java-only one needs none.
+
+### Use
+
+```kotlin
+val rewloy = Rewloy { apiKey(System.getenv("REWLOY_API_KEY")) }   // or staffSession(…) + merchant(…), or holderSession(…)
+
+val card = rewloy.issuePass(IssuePassBody(programId = programId, email = email, kvkkConsent = true))
+val result = rewloy.passAction(
+    card.serial,
+    PassActionBody("earn-stamps", locationId),
+    RequestOptions(idempotencyKey = "receipt-$receiptNo"),   // generated when omitted, reused across retries
+)
+```
+
+```java
+Rewloy rewloy = new Rewloy(RewloyOptions.builder().apiKey(key).build());
+PassActionBody body = new PassActionBody("earn-stamps", locationId);   // required fields; setters for the rest
+PassActionData result = rewloy.passAction(serial, body, RequestOptions.builder().idempotencyKey("receipt-" + no).build());
+```
+
+- **Blocking.** A call waits for the answer: use a worker thread, never
+  Android's main thread. The client is thread-safe: make one and share it.
+- **Arguments.** Path parameters, then the body and the query the operation
+  takes, then `RequestOptions` (`idempotencyKey`, `merchant`, `timeoutMs`,
+  `maxRetries`, `cancel`, `headers`).
+- **Results.** A method returns the answer's data: a class, `Page<Item>` for a
+  paged list, `Unit` for 204, `RewloyFile` for files, `JsonValue` for the
+  OpenAPI document. Ids and timestamps are `String`s (`java.time` is missing
+  from Android before 8).
+- **The whole answer.** `…WithResponse` methods return `statusCode`,
+  `headers`, `requestId`, `mode` (the `Rewloy-Mode` header, for test keys) and
+  `replayed` (`Idempotent-Replayed`) beside the data.
+- **Pagination.** `rewloy.listCustomersAll(query)` is an `Iterable` over the
+  items of every page.
+- **Streams.** `rewloy.liveFeed()` is an `EventStream`: iterate it in a thread
+  (`event`, `data`, `id`), `close()` it from anywhere. It reconnects with
+  `Last-Event-ID` unless `reconnect = false`.
+- **Cancelling.** `RequestOptions(cancel = token)` or `rewloy.withCancel(token)`;
+  `token.cancel()` aborts what is in flight.
+
+### Webhooks
+
+Verify the **raw** body bytes with the secret shown when the webhook was created:
+
+```kotlin
+val event = Webhook.verify(rawBody, request.header("Rewloy-Signature"), secret)
+```
+
+- **Check.** `Rewloy-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret,
+  "<t>.<raw body>")>` is compared in constant time, and `t` must be within
+  300 seconds.
+- **Refusal.** On failure it throws `WebhookSignatureException` (`reason`):
+  answer 400.
+- **Headers.** `Rewloy-Event` is the event type. `Rewloy-Delivery` is the
+  same on every retry of a delivery: deduplicate on it. Delivery is at least
+  once.
+
+### Errors, retries, deprecations
+
+- **Errors.** Failures throw `RewloyException` (unchecked) with `status`,
+  `code` (the API's stable code, constants in `ErrorCode`), `title`, `detail`,
+  `details`, `requestId` and `body`. Subclasses: `RateLimitException`
+  (`retryAfterSeconds`), `RewloyConnectionException` and `RewloyTimeoutException`.
+- **What is retried.** Network errors, timeouts, 429, 502–504 and
+  Cloudflare's 520–524, up to `maxRetries` (default 2), with exponential
+  backoff and jitter, honouring `Retry-After` up to 60 s.
+- **Only when safe.** Only GET, PUT, DELETE, and POST with an
+  `Idempotency-Key`, are retried; so is `409 IDEMPOTENCY_IN_PROGRESS`.
+- **Deprecations.** A deprecated operation's answers carry `Deprecation`,
+  `Sunset` and `Link`. The client calls your `DeprecationListener` once per
+  operation (or logs to `java.util.logging`), and the generated method is
+  marked `@Deprecated`.
+
+### `PATCH` and the JDK
+
+Android's `HttpURLConnection` sends `PATCH`; the desktop JDK's does not (11 of
+the 237 operations are `PATCH`). Up to Java 11 the library works around it; from
+Java 12 on, use the OkHttp transport (`com.rewloy:rewloy-okhttp`).
+
+### Security and licence
+
+Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) says.
+[MIT](LICENSE) licensed.

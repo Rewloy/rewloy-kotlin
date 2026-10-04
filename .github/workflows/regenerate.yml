@@ -1,0 +1,112 @@
+# Daily and on demand: fetch the live OpenAPI document, regenerate
+# rewloy/src/main/kotlin/com/rewloy/generated/, check the result, and when anything changed open a
+# pull request (or update the open one) from the branch regenerate/openapi.
+#
+# That branch belongs to this workflow and is overwritten on every run: fix
+# the generator on main rather than on the branch.
+#
+# A pull request opened with GITHUB_TOKEN does not start other workflows, so
+# CI does not run on it by itself: this job runs the build and the tests
+# itself and writes the outcome into the pull request. Close and reopen it to
+# run CI. The repository must allow GitHub Actions to create pull requests
+# (Settings -> Actions -> General -> Workflow permissions).
+name: Regenerate
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: regenerate
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BRANCH: regenerate/openapi
+      BASE: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      # No Gradle cache in a job that can write to the repository.
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-disabled: true
+
+      - name: Regenerate from the live document
+        run: ./gradlew generate --console=plain
+
+      - name: Anything new?
+        id: diff
+        run: |
+          if git diff --quiet -- openapi rewloy/src/main/kotlin/com/rewloy/generated && [ -z "$(git ls-files --others --exclude-standard -- rewloy/src/main/kotlin/com/rewloy/generated)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "The live document matches the snapshot."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git add -N rewloy/src/main/kotlin/com/rewloy/generated
+            git diff --stat -- openapi rewloy/src/main/kotlin/com/rewloy/generated
+          fi
+
+      - name: Build and test
+        id: check
+        if: steps.diff.outputs.changed == 'true'
+        continue-on-error: true
+        run: ./gradlew check --console=plain
+
+      - name: Open or update the pull request
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECK: ${{ steps.check.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          summary=$(python3 -c '
+          import json
+          d = json.load(open("openapi/openapi.json"))
+          ops = sum(1 for p in d["paths"].values() for m in p if m in ("get", "post", "put", "patch", "delete"))
+          print("API %s: %d paths, %d operations" % (d["info"]["version"], len(d["paths"]), ops))
+          ')
+          if [ "$CHECK" = "success" ]; then result="Build and test passed."; else result="**Build or test failed**: the generator or the hand-written code needs work. See the run."; fi
+          {
+            echo "The live OpenAPI document (https://app.rewloy.com/v1/openapi.json) changed: $summary."
+            echo
+            echo "$result ($RUN_URL)"
+            echo
+            echo '```'
+            git diff --stat -- openapi rewloy/src/main/kotlin/com/rewloy/generated
+            echo '```'
+            echo
+            echo "Opened by the Regenerate workflow, so CI does not start by itself: close and reopen this pull request to run it."
+          } > "$RUNNER_TEMP/body.md"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -C "$BRANCH"
+          git add -A openapi/openapi.json rewloy/src/main/kotlin/com/rewloy/generated
+          git commit -q -m "Regenerate from the live OpenAPI document" -m "$summary"
+          git push --force origin "HEAD:refs/heads/$BRANCH"
+
+          number=$(gh pr list --head "$BRANCH" --base "$BASE" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --body-file "$RUNNER_TEMP/body.md"
+            echo "Updated #$number"
+          else
+            gh pr create --base "$BASE" --head "$BRANCH" --title "Regenerate from the live OpenAPI document" --body-file "$RUNNER_TEMP/body.md"
+          fi
+
+      - name: Fail when the regenerated code does not pass
+        if: steps.diff.outputs.changed == 'true' && steps.check.outcome != 'success'
+        run: |
+          echo "The regenerated code failed its checks; the pull request says so."
+          exit 1

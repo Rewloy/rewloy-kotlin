@@ -1,0 +1,65 @@
+# Every push and pull request: build and test on Linux and Windows (JDK 21), the same tests on a Java 8
+# runtime, the Android API 21 check, and the packages that would be published. The tests need no network:
+# the API is a stub HTTP server on localhost.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }}, JDK 21
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+      # `check` is the tests of every module and the animalsniffer check against Android API 21.
+      - run: ./gradlew check --console=plain
+
+  java8:
+    name: tests on Java 8
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      # Gradle itself runs on 21; the second JDK is the one the tests run on (JAVA_HOME_8_X64).
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            21
+      - uses: gradle/actions/setup-gradle@v6
+      - run: ./gradlew test -PtestJava=8 --console=plain
+
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+      # Builds every artifact into a local directory and lists it. Nothing is published.
+      - run: ./gradlew publishAllPublicationsToVerifyRepository --console=plain
+      - run: find build/verify-repo -type f | sort
