@@ -13,4 +13,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "rewloy-kotlin"
 
-include(":rewloy", ":generator")
+include(":rewloy", ":rewloy-okhttp", ":rewloy-coroutines", ":generator")
