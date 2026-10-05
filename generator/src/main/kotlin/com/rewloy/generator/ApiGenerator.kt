@@ -521,7 +521,15 @@ object ApiGenerator {
                 extra.add("`${op.method} ${op.path}`")
                 extra.add("[API referansı]($REFERENCE#op-${op.id})")
                 op.deprecated?.let { extra.add(deprecationNote(op, it)) }
-                if (op.idempotency != null) extra.add("When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.")
+                if (op.idempotency != null) {
+                    extra.add(
+                        if (op.idempotency.required) {
+                            "`idempotencyKey` is required in the options: 8–64 printable ASCII characters. The call throws an `IllegalArgumentException` before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call."
+                        } else {
+                            "`idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call."
+                        },
+                    )
+                }
                 if (whole) extra.add("Returns the whole answer: the status, headers, `requestId`, `mode` (the `Rewloy-Mode` header) and `replayed` besides the data.")
                 val text = if (whole) "$summary (the whole answer)" else listOf(summary, op.description).filter { it.isNotEmpty() }.joinToString("\n\n")
                 val tags = plan.args.map { "@param ${it.name.trim('`')} ${it.doc.replace("\n", " ")}" } +

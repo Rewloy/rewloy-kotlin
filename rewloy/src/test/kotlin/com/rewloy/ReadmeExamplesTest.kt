@@ -38,10 +38,10 @@ class ReadmeExamplesTest {
         val sonuc = rewloy.passAction(
             issued.serial,
             PassActionBody("earn-stamps", locationId).apply { count = 1 },
-            RequestOptions(idempotencyKey = "fis-$fisNo"),
+            RequestOptions(idempotencyKey = "kasa3-z0187-fis$fisNo"),
         )
         assertTrue(!sonuc.duplicate)
-        assertEquals("fis-42", rig.server.received.last().header("idempotency-key"))
+        assertEquals("kasa3-z0187-fis42", rig.server.received.last().header("idempotency-key"))
         assertEquals("""{"action":"earn-stamps","locationId":"l","count":1}""", rig.server.received.last().body)
     }
 
@@ -133,11 +133,11 @@ class ReadmeExamplesTest {
         val sayfa = rewloy.listCustomers(ListCustomersQuery(page = 2))
         println("${sayfa.data.size} ${sayfa.meta.total}")
         val iptal = CancelToken()
-        thread { rewloy.passAction(serial, govde, RequestOptions(cancel = iptal)) }
+        thread { rewloy.passAction(serial, govde, RequestOptions(idempotencyKey = "kasa3-z0187-fis42", cancel = iptal)) }
         iptal.cancel()
         Rewloy { apiKey("rwk_x"); deprecationListener { n -> println(n.message) } }
         try {
-            rewloy.passAction(serial, govde, RequestOptions(idempotencyKey = "fis-1"))
+            rewloy.passAction(serial, govde, RequestOptions(idempotencyKey = "kasa3-z0187-fis43"))
         } catch (e: RateLimitException) {
             println("${e.retryAfterSeconds} saniye sonra yeniden deneyin")
         } catch (e: RewloyException) {

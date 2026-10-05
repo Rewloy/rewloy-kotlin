@@ -1,9 +1,11 @@
 package com.rewloy
 
 import com.rewloy.json.JsonValue
+import com.rewloy.models.IssuePassBody
 import com.rewloy.models.ListCustomersQuery
 import com.rewloy.models.LoginBody
 import com.rewloy.models.PassActionBody
+import com.rewloy.models.SendCampaignBody
 import com.rewloy.models.UpdateLocationBody
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import kotlin.test.Test
@@ -13,6 +15,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+
+private const val ISSUED = """{"data":{"serial":"ABCD-EFGH-JKLM","cardUrl":"https://rewloy.com/c/x","created":true}}"""
 
 class ClientTest {
     @Test
@@ -34,7 +38,7 @@ class ClientTest {
         assertEquals("gzip", r.header("accept-encoding"))
         assertNull(r.header("rewloy-merchant"))
         assertNull(r.header("idempotency-key"))
-        assertTrue(r.header("user-agent")!!.startsWith("rewloy-kotlin/0.2.0 java/"), r.header("user-agent"))
+        assertTrue(r.header("user-agent")!!.startsWith("rewloy-kotlin/0.2.1 java/"), r.header("user-agent"))
     }
 
     @Test
@@ -73,7 +77,7 @@ class ClientTest {
         rig.server.enqueue(Answer(200, Fixtures.ACTION))
         val body = PassActionBody("earn-stamps", "loc-1")
         body.count = 2
-        val result = rig.rewloy.passAction("ABCD-EFGH-JKLM", body, RequestOptions(idempotencyKey = "fis-77"))
+        val result = rig.rewloy.passAction("ABCD-EFGH-JKLM", body, RequestOptions(idempotencyKey = "fis-000077"))
         assertEquals(5.0, result.balance)
         assertFalse(result.duplicate)
         assertNull(result.promotion)
@@ -81,15 +85,74 @@ class ClientTest {
         assertEquals("POST", r.method)
         assertEquals("/v1/passes/ABCD-EFGH-JKLM/actions", r.path)
         assertEquals("""{"action":"earn-stamps","locationId":"loc-1","count":2}""", r.body)
-        assertEquals("fis-77", r.header("idempotency-key"))
+        assertEquals("fis-000077", r.header("idempotency-key"))
     }
 
     @Test
-    fun `makes an idempotency key when the call gives none`() = Rig { apiKey("rwk_abc") }.test { rig ->
-        rig.server.enqueue(Answer(200, Fixtures.ACTION))
-        rig.rewloy.passAction("S", PassActionBody("visit", "l"))
-        val key = rig.server.received.single().header("idempotency-key")!!
+    fun `makes an idempotency key where it is optional and the call gives none`() = Rig { apiKey("rwk_abc") }.test { rig ->
+        assertEquals(IdempotencyMode.OPTIONAL, RewloyOperations.issuePass.idempotency)
+        rig.server.enqueue(Answer(201, ISSUED), Answer(201, ISSUED))
+        rig.rewloy.issuePass(IssuePassBody(programId = "p"))
+        rig.rewloy.issuePass(IssuePassBody(programId = "p"), RequestOptions(idempotencyKey = "kayit-000123"))
+        val key = rig.server.received[0].header("idempotency-key")!!
         assertTrue(Regex("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}").matches(key), key)
+        assertEquals("kayit-000123", rig.server.received[1].header("idempotency-key"))
+    }
+
+    @Test
+    fun `requires the idempotency key where the API does and never makes one up`() = Rig { apiKey("rwk_abc") }.test { rig ->
+        for (id in listOf("passAction", "recordSale", "sendCampaign", "refundShopRedemption")) {
+            assertEquals(IdempotencyMode.REQUIRED, RewloyOperations.all[id]!!.idempotency, id)
+        }
+        val body = PassActionBody("visit", "l")
+        val e = assertFailsWith<IllegalArgumentException> { rig.rewloy.passAction("S", body) }
+        assertTrue(e.message!!.contains("passAction needs options.idempotencyKey"), e.message)
+        assertFailsWith<IllegalArgumentException> { rig.rewloy.passAction("S", body, RequestOptions()) }
+        assertFailsWith<IllegalArgumentException> { rig.rewloy.passActionWithResponse("S", body, RequestOptions(merchant = null)) }
+        assertFailsWith<IllegalArgumentException> { rig.rewloy.sendCampaign(SendCampaignBody("x")) }
+        assertTrue(rig.server.received.isEmpty(), "nothing was sent")
+    }
+
+    @Test
+    fun `refuses an idempotency key that cannot be a header value before sending`() = Rig { apiKey("rwk_abc") }.test { rig ->
+        val body = PassActionBody("visit", "l")
+        val bad = listOf("fiş-000123-ğ", "with space 123", "kısa", "1234567", "a".repeat(65), "", "tab\there-123", "satir\nsonu-123", "valid-key-1\n")
+        for (key in bad) {
+            val e = assertFailsWith<IllegalArgumentException>(key) { rig.rewloy.passAction("S", body, RequestOptions(idempotencyKey = key)) }
+            assertTrue(e.message!!.contains("Idempotency-Key yalnız ASCII karakterler içerebilir"), e.message)
+            assertTrue(e.message!!.contains("printable ASCII"), e.message)
+        }
+        assertFailsWith<IllegalArgumentException> { rig.rewloy.issuePass(IssuePassBody(programId = "p"), RequestOptions(idempotencyKey = "çiçek-çiçek-1")) }
+        assertFailsWith<IllegalArgumentException> {
+            rig.rewloy.passAction("S", body, RequestOptions(idempotencyKey = "fis-000123", headers = mapOf("Idempotency-Key" to "fiş-000123")))
+        }
+        assertTrue(rig.server.received.isEmpty(), "nothing was sent")
+
+        rig.server.enqueue(Answer(200, Fixtures.ACTION), Answer(200, Fixtures.ACTION), Answer(200, Fixtures.ACTION))
+        val good = listOf("12345678", "a".repeat(64), "!~#\$%&()*+,-./:;<=>?@[]^_{|}")
+        for ((i, key) in good.withIndex()) {
+            rig.rewloy.passAction("S", body, RequestOptions(idempotencyKey = key))
+            assertEquals(key, rig.server.received[i].header("idempotency-key"))
+        }
+    }
+
+    @Test
+    fun `accepts the base URL with or without v1`() {
+        for (suffix in listOf("", "/", "/v1", "/v1/", "//v1//")) {
+            StubServer().use { server ->
+                server.enqueue(Answer(200, Fixtures.PASS))
+                val rewloy = Rewloy { apiKey("rwk_abc"); baseUrl(server.url + suffix) }
+                assertEquals(server.url, rewloy.baseUrl, suffix)
+                rewloy.getPass("S")
+                assertEquals("/v1/passes/S", server.received.single().path, suffix)
+            }
+        }
+        assertEquals("https://app.rewloy.com", Rewloy { baseUrl("https://app.rewloy.com/v1") }.baseUrl)
+        assertEquals("https://app.rewloy.com", Rewloy { baseUrl("https://app.rewloy.com/v1/") }.baseUrl)
+        assertEquals("https://proxy.example.com/rewloy", Rewloy { baseUrl("https://proxy.example.com/rewloy/v1") }.baseUrl)
+        assertEquals("https://proxy.example.com/rewloy", Rewloy { baseUrl("https://proxy.example.com/rewloy") }.baseUrl)
+        // Only a path segment counts: a host called v1 stays.
+        assertEquals("https://v1", Rewloy { baseUrl("https://v1") }.baseUrl)
     }
 
     @Test
@@ -110,7 +173,7 @@ class ClientTest {
     @Test
     fun `gives the whole answer with its headers, the test mode and the replay flag`() = Rig { apiKey("rwk_test_abc") }.test { rig ->
         rig.server.enqueue(Answer(200, Fixtures.ACTION, mapOf("X-Request-Id" to "req-9", "Rewloy-Mode" to "test", "Idempotent-Replayed" to "true")))
-        val res = rig.rewloy.passActionWithResponse("S", PassActionBody("visit", "l"))
+        val res = rig.rewloy.passActionWithResponse("S", PassActionBody("visit", "l"), RequestOptions(idempotencyKey = "fis-000123"))
         assertEquals(200, res.statusCode)
         assertEquals("req-9", res.requestId)
         assertEquals("test", res.mode)
@@ -120,7 +183,7 @@ class ClientTest {
         assertNull(res.meta)
 
         rig.server.enqueue(Answer(200, Fixtures.ACTION))
-        val live = rig.rewloy.passActionWithResponse("S", PassActionBody("visit", "l"))
+        val live = rig.rewloy.passActionWithResponse("S", PassActionBody("visit", "l"), RequestOptions(idempotencyKey = "fis-000124"))
         assertNull(live.mode)
         assertFalse(live.isTestMode)
         assertFalse(live.replayed)
@@ -170,7 +233,7 @@ class ClientTest {
         rig.server.enqueue(Answer(200, Fixtures.ACTION))
         val body = PassActionBody("visit", "l")
         body.setAdditionalProperty("channel", JsonValue.of("qr"))
-        rig.rewloy.passAction("S", body)
+        rig.rewloy.passAction("S", body, RequestOptions(idempotencyKey = "fis-000125"))
         assertEquals("""{"action":"visit","locationId":"l","channel":"qr"}""", rig.server.received.single().body)
     }
 

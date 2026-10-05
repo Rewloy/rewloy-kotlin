@@ -34,7 +34,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-issuePass)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.
      *
      * @param body The JSON body.
      * @param options Per-call options: the idempotency key, the business (`Rewloy-Merchant`), the timeout, the retries, a cancel token.
@@ -50,7 +50,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-issuePass)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.
      *
      * Returns the whole answer: the status, headers, `requestId`, `mode` (the `Rewloy-Mode` header) and `replayed` besides the data.
      *
@@ -162,7 +162,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-passAction)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` is required in the options: 8–64 printable ASCII characters. The call throws an `IllegalArgumentException` before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.
      *
      * @param serial Kart seri numarası, XXXX-XXXX-XXXX
      * @param body The JSON body.
@@ -179,7 +179,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-passAction)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` is required in the options: 8–64 printable ASCII characters. The call throws an `IllegalArgumentException` before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.
      *
      * Returns the whole answer: the status, headers, `requestId`, `mode` (the `Rewloy-Mode` header) and `replayed` besides the data.
      *
@@ -220,7 +220,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-recordSale)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` is required in the options: 8–64 printable ASCII characters. The call throws an `IllegalArgumentException` before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.
      *
      * @param serial Kart seri numarası, XXXX-XXXX-XXXX
      * @param body The JSON body.
@@ -237,7 +237,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-recordSale)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` is required in the options: 8–64 printable ASCII characters. The call throws an `IllegalArgumentException` before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.
      *
      * Returns the whole answer: the status, headers, `requestId`, `mode` (the `Rewloy-Mode` header) and `replayed` besides the data.
      *
@@ -698,7 +698,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-holderLogin)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.
      *
      * @param body The JSON body; left out, `{}` is sent.
      * @param options Per-call options: the idempotency key, the business (`Rewloy-Merchant`), the timeout, the retries, a cancel token.
@@ -714,7 +714,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-holderLogin)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.
      *
      * Returns the whole answer: the status, headers, `requestId`, `mode` (the `Rewloy-Mode` header) and `replayed` besides the data.
      *
@@ -3509,7 +3509,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-sendCampaign)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` is required in the options: 8–64 printable ASCII characters. The call throws an `IllegalArgumentException` before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.
      *
      * @param body The JSON body.
      * @param options Per-call options: the idempotency key, the business (`Rewloy-Merchant`), the timeout, the retries, a cancel token.
@@ -3525,7 +3525,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-sendCampaign)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` is required in the options: 8–64 printable ASCII characters. The call throws an `IllegalArgumentException` before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.
      *
      * Returns the whole answer: the status, headers, `requestId`, `mode` (the `Rewloy-Mode` header) and `replayed` besides the data.
      *
@@ -6022,7 +6022,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-refundShopRedemption)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` is required in the options: 8–64 printable ASCII characters. The call throws an `IllegalArgumentException` before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.
      *
      * @param id The `id` of the path.
      * @param redemptionId The `redemptionId` of the path.
@@ -6040,7 +6040,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-refundShopRedemption)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` is required in the options: 8–64 printable ASCII characters. The call throws an `IllegalArgumentException` before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.
      *
      * Returns the whole answer: the status, headers, `requestId`, `mode` (the `Rewloy-Mode` header) and `replayed` besides the data.
      *
@@ -8493,7 +8493,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-addHolderEmail)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.
      *
      * @param body The JSON body.
      * @param options Per-call options: the idempotency key, the business (`Rewloy-Merchant`), the timeout, the retries, a cancel token.
@@ -8509,7 +8509,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-addHolderEmail)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.
      *
      * Returns the whole answer: the status, headers, `requestId`, `mode` (the `Rewloy-Mode` header) and `replayed` besides the data.
      *
@@ -8571,7 +8571,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-addHolderPhone)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.
      *
      * @param body The JSON body.
      * @param options Per-call options: the idempotency key, the business (`Rewloy-Merchant`), the timeout, the retries, a cancel token.
@@ -8587,7 +8587,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-addHolderPhone)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.
      *
      * Returns the whole answer: the status, headers, `requestId`, `mode` (the `Rewloy-Mode` header) and `replayed` besides the data.
      *
@@ -8721,7 +8721,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-replaceHolderIdentity)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.
      *
      * @param id The `id` of the path.
      * @param body The JSON body; left out, `{}` is sent.
@@ -8738,7 +8738,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-replaceHolderIdentity)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.
      *
      * Returns the whole answer: the status, headers, `requestId`, `mode` (the `Rewloy-Mode` header) and `replayed` besides the data.
      *
@@ -9534,7 +9534,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-startHolderRecovery)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.
      *
      * @param body The JSON body.
      * @param options Per-call options: the idempotency key, the business (`Rewloy-Merchant`), the timeout, the retries, a cancel token.
@@ -9550,7 +9550,7 @@ public abstract class RewloyApi internal constructor() {
      *
      * [API referansı](https://rewloy.com/gelistiriciler/api#op-startHolderRecovery)
      *
-     * When no `idempotencyKey` is given in the options, the client generates a UUID and sends the same one on every retry of this call.
+     * `idempotencyKey` in the options is optional: 8–64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.
      *
      * Returns the whole answer: the status, headers, `requestId`, `mode` (the `Rewloy-Mode` header) and `replayed` besides the data.
      *

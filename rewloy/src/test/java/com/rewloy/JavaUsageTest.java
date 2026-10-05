@@ -39,10 +39,10 @@ class JavaUsageTest {
             server.enqueue(Answers.json(200, Fixtures.ACTION));
             PassActionBody body = new PassActionBody("earn-stamps", "loc-1");
             body.setCount(1);
-            RequestOptions options = RequestOptions.builder().idempotencyKey("fis-1").build();
+            RequestOptions options = RequestOptions.builder().idempotencyKey("fis-000001").build();
             PassActionData result = client(server).passAction("ABCD-EFGH-JKLM", body, options);
             assertEquals(5.0, result.getBalance());
-            assertEquals("fis-1", server.getReceived().get(0).header("idempotency-key"));
+            assertEquals("fis-000001", server.getReceived().get(0).header("idempotency-key"));
             assertEquals("{\"action\":\"earn-stamps\",\"locationId\":\"loc-1\",\"count\":1}", server.getReceived().get(0).getBody());
         }
     }

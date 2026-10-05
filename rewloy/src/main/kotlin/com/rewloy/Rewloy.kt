@@ -216,7 +216,7 @@ internal class Core(options: RewloyOptions) {
         merchant = options.merchant
         val trimmed = options.baseUrl.trimEnd('/')
         require(trimmed.startsWith("http://") || trimmed.startsWith("https://")) { "baseUrl must be an http or https address." }
-        baseUrl = trimmed
+        baseUrl = normalizeBaseUrl(trimmed)
         timeoutMs = options.timeoutMs
         maxRetries = options.maxRetries
     }
@@ -292,8 +292,22 @@ internal class Core(options: RewloyOptions) {
     ): Exchange {
         val url = buildUrl(op, pathValues, query)
         val bodyBytes = if (op.hasBody) JsonWriter.stringify(body ?: JsonObject(emptyMap())).toByteArray(Charsets.UTF_8) else null
-        // Chosen once: every retry of this call sends the same key.
-        val idempotencyKey = if (op.idempotency != IdempotencyMode.NONE) options?.idempotencyKey ?: UUID.randomUUID().toString() else null
+        // A key the caller gave (in the options or as a plain header) is checked before anything is sent. Where the API
+        // requires one the client never makes one up (a generated key would not survive a restart of the caller's
+        // program); where it is optional the client generates a UUID. Chosen once: every retry sends the same key.
+        val headerKey = options?.headers?.entries?.firstOrNull { it.key.equals("Idempotency-Key", ignoreCase = true) }?.value
+        if (headerKey != null) checkIdempotencyKey(headerKey)
+        val givenKey = options?.idempotencyKey
+        val idempotencyKey: String? = when {
+            op.idempotency == IdempotencyMode.NONE -> null
+            givenKey != null -> checkIdempotencyKey(givenKey)
+            headerKey != null -> headerKey
+            op.idempotency == IdempotencyMode.REQUIRED -> throw IllegalArgumentException(
+                "${op.id} needs options.idempotencyKey: Idempotency-Key gerekli, kütüphane uydurmaz (8-64 ASCII karakter) / " +
+                    "the Idempotency-Key is required and is never generated for you (8-64 printable ASCII characters).",
+            )
+            else -> UUID.randomUUID().toString()
+        }
         val headers = buildHeaders(op, idempotencyKey, options, stream?.lastEventId)
         val retryable = Retry.isSafeMethod(op.method) || idempotencyKey != null || Retry.hasHeader(options?.headers, "idempotency-key")
         val maxRetries = maxOf(0, options?.maxRetries ?: this.maxRetries)
@@ -498,6 +512,30 @@ internal class Core(options: RewloyOptions) {
     }
 
     companion object {
+        /**
+         * The base URL without a trailing `/v1` (the operations' paths carry `/v1` themselves; the documentation shows
+         * the address both ways), and without trailing slashes. Only a path segment counts: a host called `v1` stays.
+         */
+        fun normalizeBaseUrl(url: String): String {
+            val trimmed = url.trimEnd('/')
+            val authorityStart = trimmed.indexOf("://") + 3
+            val pathStart = trimmed.indexOf('/', authorityStart)
+            if (pathStart >= 0 && trimmed.endsWith("/v1")) return trimmed.substring(0, trimmed.length - "/v1".length).trimEnd('/')
+            return trimmed
+        }
+
+        /**
+         * An `Idempotency-Key` is 8-64 printable ASCII characters (0x21-0x7E): an HTTP header value cannot carry
+         * anything else.
+         */
+        fun checkIdempotencyKey(key: String): String {
+            require(key.length in 8..64 && key.all { it in '\u0021'..'\u007e' }) {
+                "Idempotency-Key yalnız ASCII karakterler içerebilir (görünür karakterler, 8-64) / " +
+                    "the Idempotency-Key must be printable ASCII (0x21-0x7E), 8-64 characters."
+            }
+            return key
+        }
+
         private val PLACEHOLDER = Regex("\\{([^}]+)}")
         private val LINK = Regex("<([^>]*)>([^,]*)")
         private val DEPRECATION_REL = Regex("\\brel\\s*=\\s*\"?[^\";]*\\bdeprecation\\b", RegexOption.IGNORE_CASE)
@@ -547,5 +585,5 @@ internal object UserAgent {
 
 /** The library's version: the same as the Gradle build's, which a test checks. */
 internal object RewloyVersion {
-    const val CURRENT: String = "0.2.0"
+    const val CURRENT: String = "0.2.1"
 }

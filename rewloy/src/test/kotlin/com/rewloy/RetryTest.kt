@@ -67,24 +67,21 @@ class RetryTest {
     @Test
     fun `a POST with an idempotency key is retried with the same key`() = Rig { apiKey("rwk_abc") }.test { rig ->
         rig.server.enqueue(Answer(503, "x"), Answer(502, "x"), Answer(200, Fixtures.ACTION))
-        rig.rewloy.passAction("S", action)
-        val keys = rig.server.received.map { it.header("idempotency-key") }
-        assertEquals(3, keys.size)
-        assertEquals(1, keys.toSet().size)
-        assertTrue(keys[0]!!.length == 36)
+        rig.rewloy.passAction("S", action, RequestOptions(idempotencyKey = "fis-42-0001"))
+        assertEquals(listOf<String?>("fis-42-0001", "fis-42-0001", "fis-42-0001"), rig.server.received.map { it.header("idempotency-key") })
     }
 
     @Test
     fun `waits out 409 IDEMPOTENCY_IN_PROGRESS`() = Rig { apiKey("rwk_abc") }.test { rig ->
         rig.server.enqueue(error("IDEMPOTENCY_IN_PROGRESS", status = 409), Answer(200, Fixtures.ACTION))
-        assertEquals(5.0, rig.rewloy.passAction("S", action, RequestOptions(idempotencyKey = "k")).balance)
+        assertEquals(5.0, rig.rewloy.passAction("S", action, RequestOptions(idempotencyKey = "kampanya-0001")).balance)
         assertEquals(2, rig.server.received.size)
     }
 
     @Test
     fun `any other 409 is an error`() = Rig { apiKey("rwk_abc") }.test { rig ->
         rig.server.enqueue(error("CONFLICT", status = 409))
-        assertEquals("CONFLICT", assertFailsWith<RewloyException> { rig.rewloy.passAction("S", action) }.code)
+        assertEquals("CONFLICT", assertFailsWith<RewloyException> { rig.rewloy.passAction("S", action, RequestOptions(idempotencyKey = "fis-42-0002")) }.code)
         assertEquals(1, rig.server.received.size)
     }
 

@@ -33,17 +33,17 @@ class OkHttpTransportTest {
         val r = rig.server.received.single()
         assertEquals("Bearer rwk_abc", r.header("authorization"))
         assertEquals("gzip", r.header("accept-encoding"))
-        assertTrue(r.header("user-agent")!!.startsWith("rewloy-kotlin/0.2.0"), r.header("user-agent"))
+        assertTrue(r.header("user-agent")!!.startsWith("rewloy-kotlin/0.2.1"), r.header("user-agent"))
     }
 
     @Test
     fun `sends a JSON body with its content type`() = rig().test { rig ->
         rig.server.enqueue(Answer(200, Fixtures.ACTION))
-        rig.rewloy.passAction("S", PassActionBody("visit", "l"), RequestOptions(idempotencyKey = "k1"))
+        rig.rewloy.passAction("S", PassActionBody("visit", "l"), RequestOptions(idempotencyKey = "key-000001"))
         val r = rig.server.received.single()
         assertEquals("application/json", r.header("content-type"))
         assertEquals("""{"action":"visit","locationId":"l"}""", r.body)
-        assertEquals("k1", r.header("idempotency-key"))
+        assertEquals("key-000001", r.header("idempotency-key"))
     }
 
     @Test
