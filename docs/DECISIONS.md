@@ -323,10 +323,15 @@ whole answer (14).
     - **The rules `release.yml` enforces:** a version is published once and never
       changed. The push may only add the files of the tagged version and change the
       `maven-metadata.xml` files (and their checksums), which must keep every version
-      they listed; every checksum is checked. The job that runs Gradle has no secret;
-      the job that holds the write key (a deploy key of `Rewloy/maven`, stored as a
-      secret of the environment `maven`, which only `v*` tags can use) runs no Gradle
-      and no third-party code.
+      they listed; every checksum is checked. Every release is exactly `rewloy`,
+      `rewloy-okhttp` and `rewloy-coroutines`, each with its jar, sources, javadoc, POM
+      and Gradle module file. The version must be newer than every published one and
+      the metadata must name it `<latest>` and `<release>` (Gradle names whatever it
+      publishes, so 0.2.1 after 0.2.3 would become what `latest.release` resolves to).
+      Tags are a plain `vX.Y.Z` until pre-releases are wanted, for the same reason.
+      The job that runs Gradle has no secret; the job that holds the write key (a
+      deploy key of `Rewloy/maven`, stored as a secret of the environment `maven`,
+      which only `v*` tags can use) runs no Gradle and no third-party code.
     - **Central-compatible on purpose:** the files and the POM are what Central asks
       for, and the Central configuration stays in `build.gradle.kts`
       (`publishToMavenCentral`, signing when a key is given). Moving is the Portal
@@ -344,5 +349,7 @@ whole answer (14).
     - **Limits:** GitHub Pages is free for a public repository, with soft limits of
       1 GB per site and 100 GB of traffic a month. A release of the three artifacts is
       about 4 MB.
-    - **What users write:** one more `repositories` entry, restricted to `com.rewloy`
-      with `includeGroup` so that Gradle asks it for nothing else.
+    - **What users write:** one more `repositories` entry, an `exclusiveContent` block
+      for `com.rewloy` (Gradle): the group is taken from this repository only, so a
+      package of the same name in another repository cannot stand in for it, and this
+      repository is asked for nothing else. The repository is HTTPS only.

@@ -7,7 +7,8 @@
 # third-party build code (Gradle plugins, dependencies):
 #
 #   build    No secrets. Checks the tag is exactly v + the version in
-#            build.gradle.kts, runs what ci.yml runs on Linux (`check`: every
+#            build.gradle.kts, a plain X.Y.Z (no pre-release or SNAPSHOT
+#            tags for now), runs what ci.yml runs on Linux (`check`: every
 #            module's tests and the Android API 21 check; the tests on Java 8),
 #            checks out Rewloy/maven read-only into maven-repo and runs
 #            publishAllPublicationsToRewloyRepoRepository into it, so Gradle
@@ -19,12 +20,16 @@
 #   publish  Environment "maven": the only job that can read the deploy key.
 #            Runs no Gradle and no third-party code. Checks out Rewloy/maven
 #            with the key, downloads the artifact into a separate directory and
-#            refuses it unless it is exactly: new files of this version (jar,
-#            sources, javadoc, POM, Gradle module, their checksums, all
-#            checked) plus the maven-metadata.xml files and their checksums,
-#            each still listing every version it listed before. A version
-#            that is already in Rewloy/maven is refused: a published version is
-#            never changed. Then it copies the files in, commits
+#            refuses it unless it is exactly the three artifacts rewloy,
+#            rewloy-okhttp and rewloy-coroutines (no other, none missing): new
+#            files of this version (jar, sources, javadoc, POM, Gradle module,
+#            their checksums, all checked) plus the maven-metadata.xml files
+#            and their checksums, each still listing every version it listed
+#            before, adding only this one and naming it <latest> and <release>.
+#            A version that is already in Rewloy/maven is refused (a published
+#            version is never changed), and so is one that is not newer than
+#            every version there (it would become "latest" for every user of
+#            latest.release or a range). Then it copies the files in, commits
 #            "rewloy-kotlin X.Y.Z" and pushes to main (never forced). Pages
 #            serves it a minute or two later.
 #
@@ -95,15 +100,21 @@ jobs:
         with:
           cache-disabled: true
 
-      # First, so that a wrong tag fails in seconds.
+      # First, so that a wrong tag fails in seconds. Only v<major>.<minor>.<patch> until pre-releases are
+      # wanted: Gradle would name v0.3.0-rc.1 the <release> in maven-metadata.xml, and every user of
+      # latest.release would get it. The publish job checks the same.
       - name: Check the tag matches the version
         run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          if ! [[ "$tag_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} is not v<major>.<minor>.<patch>; pre-release and SNAPSHOT versions are not released"
+            exit 1
+          fi
           version="$(./gradlew -q :properties --property version --console=plain | sed -n 's/^version: //p')"
           if [ -z "$version" ] || [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
             echo "::error::Tag ${GITHUB_REF_NAME} does not match version \"${version}\" in build.gradle.kts"
             exit 1
           fi
-          case "$version" in *SNAPSHOT*) echo "::error::A SNAPSHOT version is not released"; exit 1 ;; esac
           echo "Releasing rewloy-kotlin ${version}"
 
       # The checks of ci.yml: every module's tests and the Android API 21 check, then the tests on Java 8.
@@ -163,13 +174,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      # From the tag itself, not from anything the build job produced.
+      # From the tag itself, not from anything the build job produced. X.Y.Z only, as in the build job.
       - name: Version from the tag
         id: version
         run: |
           version="${GITHUB_REF_NAME#v}"
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || [[ "$version" == *SNAPSHOT* ]]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} is not v<major>.<minor>.<patch>[-<pre-release>]"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} is not v<major>.<minor>.<patch>; pre-release and SNAPSHOT versions are not released"
             exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
@@ -199,6 +210,9 @@ jobs:
           version = os.environ["VERSION"]
           src = pathlib.Path(os.environ["RUNNER_TEMP"], "release")
           repo = pathlib.Path("maven-repo")
+          # Every release is exactly these: the published modules of settings.gradle.kts. A new module is
+          # added here in the same change; a release that lacks one, or carries another, is refused.
+          ARTIFACTS = {"rewloy", "rewloy-okhttp", "rewloy-coroutines"}
           SUMS = ("md5", "sha1", "sha256", "sha512")
           v = re.escape(version)
           art = r"[a-z0-9][a-z0-9.-]*"
@@ -208,6 +222,20 @@ jobs:
           def fail(message):
               print(f"::error::{message}")
               sys.exit(1)
+
+          # Versions in order: by major, minor, patch, and a pre-release below its release (SemVer).
+          def version_key(text):
+              m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-(.+))?", text or "", re.ASCII)
+              if not m:
+                  fail(f"{text!r} is not a version")
+              numbers = (int(m[1]), int(m[2]), int(m[3]))
+              if m[4] is None:
+                  return numbers + (1, ())
+              return numbers + (0, tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in m[4].split(".")))
+
+          # As the version step: X.Y.Z only until pre-releases are wanted (Gradle would make one the <release>).
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+              fail(f"{version!r} is not <major>.<minor>.<patch>")
 
           # 1. What the build job sent: regular files only, each a file of this version or a metadata file.
           files = {}
@@ -225,13 +253,20 @@ jobs:
                       files[rel] = p
           if not files:
               fail("The artifact is empty")
-          artifacts = sorted({(version_file.fullmatch(r) or metadata_file.fullmatch(r)).group("a") for r in files})
+          artifacts = {(version_file.fullmatch(r) or metadata_file.fullmatch(r)).group("a") for r in files}
+          for a in sorted(artifacts - ARTIFACTS):
+              fail(f"com.rewloy:{a} is not one of the artifacts this repository publishes ({', '.join(sorted(ARTIFACTS))})")
+          for a in sorted(ARTIFACTS - artifacts):
+              fail(f"The release has no com.rewloy:{a}; every release carries all of {', '.join(sorted(ARTIFACTS))}")
+          artifacts = sorted(artifacts)
 
-          # 2. A published version is never changed: it must be new, and complete.
+          # 2. A published version is never changed: it must be new, and complete. The POM points Gradle
+          #    at the .module file, so it is required as well.
           for a in artifacts:
               if (repo / "com/rewloy" / a / version).exists():
                   fail(f"com.rewloy:{a}:{version} is already published; versions are immutable")
-              for name in (f"{a}-{version}.pom", f"{a}-{version}.jar", f"{a}-{version}-sources.jar", f"{a}-{version}-javadoc.jar"):
+              for name in (f"{a}-{version}.pom", f"{a}-{version}.module", f"{a}-{version}.jar",
+                           f"{a}-{version}-sources.jar", f"{a}-{version}-javadoc.jar"):
                   if f"com/rewloy/{a}/{version}/{name}" not in files:
                       fail(f"com.rewloy:{a}:{version} has no {name}")
               if f"com/rewloy/{a}/maven-metadata.xml" not in files:
@@ -255,24 +290,34 @@ jobs:
                   if not words or words[0].lower() != hashlib.new(alg, data).hexdigest():
                       fail(f"{rel}.{alg} does not match {rel}")
 
-          # 4. The POMs name themselves; each maven-metadata.xml keeps every version it listed and adds only this one.
+          # 4. The POMs name themselves; each maven-metadata.xml keeps every version it listed, adds only this one,
+          #    which is newer than all of them, and names it <latest> and <release>. Gradle sets both to the version
+          #    it publishes, so an older version (0.2.1 after 0.2.3) would become what latest.release resolves to.
           M = "{http://maven.apache.org/POM/4.0.0}"
           for a in artifacts:
               pom = ET.parse(files[f"com/rewloy/{a}/{version}/{a}-{version}.pom"]).getroot()
               if (pom.findtext(M + "groupId"), pom.findtext(M + "artifactId"), pom.findtext(M + "version")) != ("com.rewloy", a, version):
                   fail(f"The POM of {a} {version} names another artifact")
-              def versions(path):
+              def metadata(path):
                   root = ET.parse(path).getroot()
                   if root.findtext("groupId") != "com.rewloy" or root.findtext("artifactId") != a:
                       fail(f"{path} is not the metadata of com.rewloy:{a}")
-                  return {e.text for e in root.findall("versioning/versions/version")}
-              new = versions(files[f"com/rewloy/{a}/maven-metadata.xml"])
+                  return root
+              new_root = metadata(files[f"com/rewloy/{a}/maven-metadata.xml"])
+              new = {e.text for e in new_root.findall("versioning/versions/version")}
               old_path = repo / "com/rewloy" / a / "maven-metadata.xml"
-              old = versions(old_path) if old_path.exists() else set()
+              old = {e.text for e in metadata(old_path).findall("versioning/versions/version")} if old_path.exists() else set()
               if not old <= new:
                   fail(f"maven-metadata.xml of {a} drops {sorted(old - new)}")
               if new - old != {version}:
                   fail(f"maven-metadata.xml of {a} adds {sorted(new - old)}, not just {version}")
+              not_older = sorted((o for o in old if version_key(o) >= version_key(version)), key=version_key)
+              if not_older:
+                  fail(f"com.rewloy:{a} already has {', '.join(not_older)}; a release must be newer than every published version")
+              for field in ("latest", "release"):
+                  named = new_root.findtext(f"versioning/{field}")
+                  if named != version:
+                      fail(f"maven-metadata.xml of {a} names {named!r} as <{field}>, not {version}")
 
           # 5. Copy in; then, as git sees the checkout: only new files of this version and new or changed metadata.
           for rel, p in files.items():

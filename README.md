@@ -38,18 +38,22 @@ gerekmez.
 
 Paketler Rewloy'un kendi Maven deposundadır: **https://maven.rewloy.com**
 (Maven Central'da değil; nedeni [docs/DECISIONS.md](docs/DECISIONS.md), 32).
-Kütüphane JVM 8 için derlenir. Kotlin kullanıyorsanız derleyiciniz 2.0 ya da
-üstü olmalıdır; yalnız Java kullanıyorsanız Kotlin derleyicisine gerek yoktur.
+Depo yalnız HTTPS ile sunulur; adresi `http://` ile yazmayın. Kütüphane JVM 8
+için derlenir. Kotlin kullanıyorsanız derleyiciniz 2.0 ya da üstü olmalıdır;
+yalnız Java kullanıyorsanız Kotlin derleyicisine gerek yoktur.
 
 **Gradle (Kotlin DSL)**, `build.gradle.kts`. Android Studio projelerinde
 `repositories` bloğu `settings.gradle.kts` içinde,
-`dependencyResolutionManagement` altındadır.
+`dependencyResolutionManagement` altındadır. `exclusiveContent` ile `com.rewloy`
+paketleri yalnız bu depodan alınır (başka bir depodaki aynı adlı bir paket
+onların yerine geçemez) ve bu depoya başka bir şey sorulmaz.
 
 ```kotlin
 repositories {
     mavenCentral()
-    maven("https://maven.rewloy.com") {
-        content { includeGroup("com.rewloy") }   // bu depoda yalnız com.rewloy aranır
+    exclusiveContent {
+        forRepository { maven("https://maven.rewloy.com") }
+        filter { includeGroup("com.rewloy") }   // com.rewloy yalnız buradan, burada yalnız com.rewloy
     }
 }
 
@@ -66,9 +70,9 @@ dependencies {
 ```groovy
 repositories {
     mavenCentral()
-    maven {
-        url = 'https://maven.rewloy.com'
-        content { includeGroup 'com.rewloy' }
+    exclusiveContent {
+        forRepository { maven { url = 'https://maven.rewloy.com' } }
+        filter { includeGroup 'com.rewloy' }
     }
 }
 
@@ -639,8 +643,9 @@ dosyaları gönderir. Kurulumu ve kuralları dosyanın başında yazılıdır.
 2. main'e gönderin ve CI'ın yeşil olmasını bekleyin.
 3. Etiketleyin: `git tag v0.2.3 && git push origin v0.2.3`.
 
-Yayımlanmış bir sürüm değiştirilemez; bir düzeltme yeni bir sürümdür. Aynı
-dosyaları yerelde görmek için:
+Yayımlanmış bir sürüm değiştirilemez; bir düzeltme yeni bir sürümdür. Etiket
+yalnız `vX.Y.Z` biçiminde olabilir (şimdilik ön sürüm yok) ve sürüm, yayımlanmış
+her sürümden yeni olmalıdır. Aynı dosyaları yerelde görmek için:
 
 ```sh
 ./gradlew publishAllPublicationsToVerifyRepository                               # build/verify-repo altına
@@ -708,19 +713,23 @@ The documentation of the API itself is in Turkish (links above). In short:
 ### Install
 
 The packages are on Rewloy's own Maven repository, **https://maven.rewloy.com**
-(not Maven Central; [docs/DECISIONS.md](docs/DECISIONS.md), 32, says why). The
-library targets JVM 8. A Kotlin caller needs a Kotlin 2.0 or later compiler; a
+(not Maven Central; [docs/DECISIONS.md](docs/DECISIONS.md), 32, says why). It is
+served over HTTPS only; do not write the address with `http://`. The library
+targets JVM 8. A Kotlin caller needs a Kotlin 2.0 or later compiler; a
 Java-only one needs none.
 
 Gradle (Kotlin DSL), `build.gradle.kts`. In Android Studio projects the
 `repositories` block goes in `settings.gradle.kts`, inside
-`dependencyResolutionManagement`.
+`dependencyResolutionManagement`. With `exclusiveContent`, `com.rewloy` comes
+from this repository only (a package of the same name in another repository
+cannot stand in for it), and this repository is asked for nothing else.
 
 ```kotlin
 repositories {
     mavenCentral()
-    maven("https://maven.rewloy.com") {
-        content { includeGroup("com.rewloy") }   // only com.rewloy is looked up here
+    exclusiveContent {
+        forRepository { maven("https://maven.rewloy.com") }
+        filter { includeGroup("com.rewloy") }   // com.rewloy only from here, only com.rewloy from here
     }
 }
 
@@ -736,9 +745,9 @@ Gradle (Groovy), `build.gradle`:
 ```groovy
 repositories {
     mavenCentral()
-    maven {
-        url = 'https://maven.rewloy.com'
-        content { includeGroup 'com.rewloy' }
+    exclusiveContent {
+        forRepository { maven { url = 'https://maven.rewloy.com' } }
+        filter { includeGroup 'com.rewloy' }
     }
 }
 
@@ -777,7 +786,8 @@ git clone https://github.com/Rewloy/rewloy-kotlin && cd rewloy-kotlin && ./gradl
 Releasing: bump the version in `build.gradle.kts`, `RewloyVersion.CURRENT` and
 CHANGELOG.md, push to main, and once CI is green push a `v*` tag;
 `.github/workflows/release.yml` adds the version to https://maven.rewloy.com.
-A published version is never changed.
+A published version is never changed. The tag is a plain `vX.Y.Z` (no
+pre-releases for now), and the version must be newer than every published one.
 
 ### Use
 
