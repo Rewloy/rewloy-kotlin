@@ -10,6 +10,7 @@ import com.rewloy.models.ListCustomersItem;
 import com.rewloy.models.ListCustomersQuery;
 import com.rewloy.models.PassActionBody;
 import com.rewloy.models.PassActionData;
+import com.rewloy.models.PassActionDataOption1;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,10 @@ class JavaUsageTest {
             body.setCount(1);
             RequestOptions options = RequestOptions.builder().idempotencyKey("fis-000001").build();
             PassActionData result = client(server).passAction("ABCD-EFGH-JKLM", body, options);
-            assertEquals(5.0, result.getBalance());
+            // A sealed class: a Java caller reads what both shapes share, or checks the shape with instanceof.
+            assertEquals(false, result.getDuplicate());
+            assertTrue(result instanceof PassActionDataOption1);
+            assertEquals(5.0, ((PassActionDataOption1) result).getBalance());
             assertEquals("fis-000001", server.getReceived().get(0).header("idempotency-key"));
             assertEquals("{\"action\":\"earn-stamps\",\"locationId\":\"loc-1\",\"count\":1}", server.getReceived().get(0).getBody());
         }

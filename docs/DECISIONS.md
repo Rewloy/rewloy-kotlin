@@ -87,7 +87,16 @@ whole answer (14).
      all of them. They have no `equals`, `hashCode`, `copy` or `toString` (a data
      class has them, at the cost of dozens of methods in each of 630 classes, and a
      `toString` would print an answer's secrets into a log).
-   - **`JsonValue`** is used for a union (`me`, a team grant's `locations`), for a
+   - **A union of objects** (`oneOf` of different shapes: passAction's two answers,
+     `me`'s staff session or API key) is a `sealed class` with a class per shape (0.2.2),
+     named after the property that tells the shapes apart (`kind`: `MeDataStaff`,
+     `MeDataKey`) or `…Option1`, `…Option2`. What every shape has, required and of one
+     type (`duplicate`), is an abstract property of the sealed class, so reading it
+     needs no `when`. The reader picks the shape: of those whose required fields are
+     all present (and whose `const` field matches), the one with the most known fields;
+     none matching is a `ResponseShapeException`. A union that is not all objects, or
+     the same in a request, stays a `JsonValue`. Before 0.2.2 these were `JsonValue`.
+   - **`JsonValue`** is used for any other union (a team grant's `locations`), for a
      free-form object and for a type the document does not give.
    - **A map** (`additionalProperties` with a schema) is `Map<String, T>`, a list `List<T>`.
 7. **Ids and timestamps are `String`s; integers are `Int` when the schema bounds
@@ -142,7 +151,7 @@ whole answer (14).
       can call, from a thread, an `Executor`, an `AsyncTask` or a coroutine.
       `HttpURLConnection` is blocking anyway; wrapping it in `suspendCoroutine` would
       only hide a thread.
-    - **Why not 237 more `suspend` methods:** they would double the generated code
+    - **Why not a `suspend` twin of every method (256 more):** they would double the generated code
       and the public surface, and could not be written without a dependency on
       kotlinx.coroutines, which a Java caller must not pay for.
     - **What is offered instead** (`rewloy-coroutines`): `rewloy.suspending { getPass(s) }`

@@ -33,7 +33,7 @@ class OkHttpTransportTest {
         val r = rig.server.received.single()
         assertEquals("Bearer rwk_abc", r.header("authorization"))
         assertEquals("gzip", r.header("accept-encoding"))
-        assertTrue(r.header("user-agent")!!.startsWith("rewloy-kotlin/0.2.1"), r.header("user-agent"))
+        assertTrue(Regex("rewloy-kotlin/\\d+\\.\\d+\\.\\d+").containsMatchIn(r.header("user-agent")!!), r.header("user-agent"))
     }
 
     @Test

@@ -21,6 +21,9 @@ public class RewloyResponse<out T> internal constructor(
     /** `x-request-id`: quote it to Rewloy support. */
     public val requestId: String? get() = headers["x-request-id"]
 
+    /** The `RateLimit-*` headers of the answer; `null` when it carries none (anonymous calls). */
+    public val rateLimit: RewloyRateLimit? get() = RewloyRateLimit.from(headers)
+
     /**
      * `Rewloy-Mode`: which mode answered (`test` for a test key's calls, which reach no customer); `null` when
      * the answer does not say.

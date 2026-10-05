@@ -14,7 +14,7 @@ import java.net.URL
  * - **Redirects** are not followed and the connection cache is off.
  * - **`PATCH`** is accepted by Android's `HttpURLConnection` but refused by the JDK's. On a JVM up to Java 11 this
  *   class works around it; from Java 12 on that workaround is closed off, and a `PATCH` throws
- *   [UnsupportedOperationException] pointing to `rewloy-okhttp` (11 of the API's 237 operations are `PATCH`).
+ *   [UnsupportedOperationException] pointing to `rewloy-okhttp` (12 of the API's 256 operations are `PATCH`).
  * - **Cancelling** a request disconnects it (on a helper thread). That ends a request that is waiting for its
  *   answer; a read of an answer's body that is blocked on a keep-alive connection ends only when a byte or the
  *   read timeout comes, because the JDK does not close such a socket on `disconnect()` (a stream gets around it with

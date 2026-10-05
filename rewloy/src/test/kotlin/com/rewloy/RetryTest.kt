@@ -1,6 +1,7 @@
 package com.rewloy
 
 import com.rewloy.models.PassActionBody
+import com.rewloy.models.PassActionDataOption1
 import com.rewloy.models.CreateSegmentBody
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -74,7 +75,7 @@ class RetryTest {
     @Test
     fun `waits out 409 IDEMPOTENCY_IN_PROGRESS`() = Rig { apiKey("rwk_abc") }.test { rig ->
         rig.server.enqueue(error("IDEMPOTENCY_IN_PROGRESS", status = 409), Answer(200, Fixtures.ACTION))
-        assertEquals(5.0, rig.rewloy.passAction("S", action, RequestOptions(idempotencyKey = "kampanya-0001")).balance)
+        assertEquals(5.0, (rig.rewloy.passAction("S", action, RequestOptions(idempotencyKey = "kampanya-0001")) as PassActionDataOption1).balance)
         assertEquals(2, rig.server.received.size)
     }
 

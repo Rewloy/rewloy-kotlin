@@ -5,6 +5,9 @@ import com.rewloy.models.IssuePassBody
 import com.rewloy.models.ListCustomersQuery
 import com.rewloy.models.LoginBody
 import com.rewloy.models.PassActionBody
+import com.rewloy.models.PassActionDataOption1
+import com.rewloy.models.PassActionDataOption2
+import com.rewloy.models.ReverseActionBody
 import com.rewloy.models.SendCampaignBody
 import com.rewloy.models.UpdateLocationBody
 import org.junit.jupiter.api.Assumptions.assumeTrue
@@ -38,7 +41,7 @@ class ClientTest {
         assertEquals("gzip", r.header("accept-encoding"))
         assertNull(r.header("rewloy-merchant"))
         assertNull(r.header("idempotency-key"))
-        assertTrue(r.header("user-agent")!!.startsWith("rewloy-kotlin/0.2.1 java/"), r.header("user-agent"))
+        assertTrue(r.header("user-agent")!!.startsWith("rewloy-kotlin/${RewloyVersion.CURRENT} java/"), r.header("user-agent"))
     }
 
     @Test
@@ -78,8 +81,9 @@ class ClientTest {
         val body = PassActionBody("earn-stamps", "loc-1")
         body.count = 2
         val result = rig.rewloy.passAction("ABCD-EFGH-JKLM", body, RequestOptions(idempotencyKey = "fis-000077"))
-        assertEquals(5.0, result.balance)
         assertFalse(result.duplicate)
+        assertTrue(result is PassActionDataOption1)
+        assertEquals(5.0, result.balance)
         assertNull(result.promotion)
         val r = rig.server.received.single()
         assertEquals("POST", r.method)
@@ -172,21 +176,61 @@ class ClientTest {
 
     @Test
     fun `gives the whole answer with its headers, the test mode and the replay flag`() = Rig { apiKey("rwk_test_abc") }.test { rig ->
-        rig.server.enqueue(Answer(200, Fixtures.ACTION, mapOf("X-Request-Id" to "req-9", "Rewloy-Mode" to "test", "Idempotent-Replayed" to "true")))
+        rig.server.enqueue(Answer(200, Fixtures.ACTION, mapOf("X-Request-Id" to "req-9", "Rewloy-Mode" to "test", "Idempotent-Replayed" to "true", "RateLimit-Limit" to "120", "RateLimit-Remaining" to "117", "RateLimit-Reset" to "41")))
         val res = rig.rewloy.passActionWithResponse("S", PassActionBody("visit", "l"), RequestOptions(idempotencyKey = "fis-000123"))
         assertEquals(200, res.statusCode)
         assertEquals("req-9", res.requestId)
         assertEquals("test", res.mode)
         assertTrue(res.isTestMode)
         assertTrue(res.replayed)
-        assertEquals(5.0, res.data.balance)
+        assertEquals(RewloyRateLimit(120, 117, 41), res.rateLimit)
+        assertEquals(5.0, (res.data as PassActionDataOption1).balance)
         assertNull(res.meta)
 
         rig.server.enqueue(Answer(200, Fixtures.ACTION))
         val live = rig.rewloy.passActionWithResponse("S", PassActionBody("visit", "l"), RequestOptions(idempotencyKey = "fis-000124"))
         assertNull(live.mode)
+        assertNull(live.rateLimit, "no RateLimit headers, no rateLimit")
         assertFalse(live.isTestMode)
         assertFalse(live.replayed)
+    }
+
+    @Test
+    fun `reverses a till action without an idempotency key and tells passAction's two answers apart`() = Rig { apiKey("rwk_abc") }.test { rig ->
+        rig.server.enqueue(
+            Answer(200, """{"data":{"type":"giftcard","undone":"spend","restored":5000,"balance":5000,"uses":null,"usesLeft":null,"status":"active","reopened":false,"duplicate":false,"rewardReady":false,"rewardsReady":0}}"""),
+            Answer(200, """{"data":{"status":"active","duplicate":false,"uses":3,"usesLeft":2}}"""),
+            Answer(200, """{"data":{"balance":12,"duplicate":true,"promotion":{"id":"p","name":"2x","factor":2}}}"""),
+        )
+        val back = rig.rewloy.reverseAction("ABCD-EFGH-JKLM", ReverseActionBody(actionKey = "kasa3-z0187-fis0042", locationId = "l"))
+        assertEquals("spend", back.undone)
+        assertEquals(5000L, back.restored)
+        val r = rig.server.received.single()
+        assertEquals("POST", r.method)
+        assertEquals("/v1/passes/ABCD-EFGH-JKLM/actions/reverse", r.path)
+        assertNull(r.header("idempotency-key"), "the API does not ask for one")
+        assertEquals("""{"actionKey":"kasa3-z0187-fis0042","locationId":"l"}""", r.body)
+        assertEquals(IdempotencyMode.NONE, RewloyOperations.reverseAction.idempotency)
+
+        // A sealed class: `when` is exhaustive, and what both shapes have (`duplicate`) needs no `when`.
+        val use = rig.rewloy.passAction("ABCD-EFGH-JKLM", PassActionBody("use", "l"), RequestOptions(idempotencyKey = "kasa3-z0187-fis0043"))
+        val text = when (use) {
+            is PassActionDataOption1 -> "balance ${use.balance}"
+            is PassActionDataOption2 -> "uses ${use.uses}, ${use.usesLeft} left, ${use.status}"
+        }
+        assertEquals("uses 3, 2 left, active", text)
+        assertFalse(use.duplicate)
+        val earn = rig.rewloy.passAction("ABCD-EFGH-JKLM", PassActionBody("earn-points", "l"), RequestOptions(idempotencyKey = "kasa3-z0187-fis0044"))
+        assertEquals(12.0, (earn as PassActionDataOption1).balance)
+        assertEquals(2, earn.promotion!!.factor)
+        assertTrue(earn.duplicate)
+    }
+
+    @Test
+    fun `an answer that has none of the documented shapes is a response error`() = Rig { apiKey("rwk_abc") }.test { rig ->
+        rig.server.enqueue(Answer(200, """{"data":{"hello":"world"}}"""))
+        val e = assertFailsWith<RewloyException> { rig.rewloy.passAction("S", PassActionBody("visit", "l"), RequestOptions(idempotencyKey = "fis-000123")) }
+        assertTrue(e.message!!.contains("none of the 2 shapes"), e.message)
     }
 
     @Test

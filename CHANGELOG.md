@@ -5,6 +5,47 @@ https://rewloy.com/gelistiriciler/degisiklikler
 
 This library's releases. The API's own changes are listed at the link above.
 
+## 0.2.2 (2026-10-05)
+
+Rewloy 1.1.0'a (API sürümü) göre yeniden üretildi: 256 işlem (0.2.1'de 255). Kasa
+için `reverseAction`, `RecordSaleBody.occurredAt`, `PassActionBody.reference`;
+yanıtlarda `RateLimit-*` başlıkları.
+
+Regenerated from Rewloy 1.1.0 (the product version in `info.version`): 256
+operations (255 in 0.2.1).
+
+- **New operation: `reverseAction`** (`POST /v1/passes/{serial}/actions/reverse`).
+  Voids a till action made with `passAction` (`spend`, `spend-points`,
+  `redeem-stamps`, `redeem-reward`, `use`), found by its `actionKey` (the
+  `Idempotency-Key` it was sent with) or its `reference`. It needs no
+  `Idempotency-Key`: an action is voided once and a repeat answers
+  `duplicate = true`. New error codes `ACTION_NOT_FOUND`, `ACTION_AMBIGUOUS`,
+  `ACTION_NOT_REVERSIBLE` (constants of `ErrorCode`).
+- **`RecordSaleBody.occurredAt`** (optional ISO 8601 text): when the sale really
+  happened, for a till that queues sales while offline.
+- **`PassActionBody.reference`** (optional), and **`passAction` returns a typed
+  `PassActionData`** instead of a `JsonValue`. The generator turns a union of
+  objects (`oneOf` of different shapes) into a `sealed class` with a class per
+  shape: `PassActionDataOption1` (the balance-card answer: `balance`, `detail`,
+  `promotion`) and `PassActionDataOption2` (the coupon / discount-card answer:
+  `status`, `uses`, `usesLeft`); `duplicate`, which both have, is a property of
+  the base, and a `when` over the shapes is exhaustive. **Source-breaking for
+  callers that read the old `JsonValue`** (also `me`, the only other union of
+  objects in the API: it returns `MeData`, `MeDataStaff` or `MeDataKey`). An
+  answer with none of the documented shapes is a `ResponseShapeException`.
+- **Rate limit headers.** `RewloyResponse.rateLimit` and `RewloyException.rateLimit`
+  (including `RateLimitException`) return a `RewloyRateLimit` (`limit`,
+  `remaining`, `resetSeconds`; from `RateLimit-Limit`, `RateLimit-Remaining`,
+  `RateLimit-Reset`) or `null` when the answer has none. Additive.
+- The tests read the version of the User-Agent instead of hard-coding it; the
+  prose that counted the API's operations no longer says 237 (256 operations, 12
+  of them `PATCH`).
+- Webhook-creation responses may carry `warnings` (a non-live installation whose
+  URL production would refuse); the `Idempotency-Key` parameter documents its
+  8–64 printable ASCII rule; the API's descriptions no longer contain internal
+  `ADR n` references. README: the till example has a void step and a note on
+  `occurredAt` for offline queues.
+
 ## 0.2.1 (2026-10-05)
 
 Dışarıdan geliştiricilerin bulduğu üç sorun düzeltildi.

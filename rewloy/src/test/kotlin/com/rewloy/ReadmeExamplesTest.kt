@@ -6,8 +6,11 @@ import com.rewloy.models.IssuePassBody
 import com.rewloy.models.ListCustomersQuery
 import com.rewloy.models.LoginBody
 import com.rewloy.models.PassActionBody
+import com.rewloy.models.PassActionDataOption1
+import com.rewloy.models.PassActionDataOption2
 import com.rewloy.models.ProveMfaBody
 import com.rewloy.models.RecordSaleBody
+import com.rewloy.models.ReverseActionBody
 import com.rewloy.models.ReverseSaleBody
 import com.rewloy.models.SendCampaignBody
 import kotlin.concurrent.thread
@@ -84,6 +87,46 @@ class ReadmeExamplesTest {
         val geri = rewloy.reverseSale(seri, ReverseSaleBody(saleKey = anahtar, locationId = locationId))
         assertEquals("1 stamps 3.0", "${geri.reversed} ${geri.applied} ${geri.balance}")
         assertTrue(rig.server.received.last().body.contains(""""saleKey":"kasa3-z0187-fis42""""))
+    }
+
+    @Test
+    fun `an offline sale, a void and the two answers of passAction`() = Rig { apiKey("rwk_abc") }.test { rig ->
+        val rewloy = rig.rewloy
+        rig.server.script = { r, _ ->
+            when {
+                r.path.endsWith("/sale") -> Answer(200, """{"data":{"type":"stamp","applied":"stamps","credited":1,"balance":4,"duplicate":false,"rewardReady":false,"rewardsReady":0}}""")
+                r.path.endsWith("/actions/reverse") -> Answer(200, """{"data":{"type":"giftcard","undone":"spend","restored":2500,"balance":10000,"uses":null,"usesLeft":null,"status":"active","reopened":false,"duplicate":false,"rewardReady":false,"rewardsReady":0}}""")
+                else -> Answer(200, """{"data":{"balance":7500,"duplicate":false}}""")
+            }
+        }
+        val seri = "ABCD-EFGH-JKLM"
+        val locationId = "l"
+        val fisNo = 42
+        val anahtar = "kasa3-z0187-fis$fisNo"
+
+        rewloy.recordSale(
+            seri,
+            RecordSaleBody(amountMinor = 4550, locationId = locationId, reference = "fis-$fisNo", occurredAt = "2026-10-05T14:32:10+03:00"),
+            RequestOptions(idempotencyKey = anahtar),
+        )
+        assertTrue(rig.server.received.last().body.contains(""""occurredAt":"2026-10-05T14:32:10+03:00""""))
+
+        rewloy.passAction(
+            seri,
+            PassActionBody("spend", locationId).apply { amountMinor = 2500 },
+            RequestOptions(idempotencyKey = "kasa3-z0187-iptal$fisNo"),
+        )
+        val iptal = rewloy.reverseAction(seri, ReverseActionBody(actionKey = "kasa3-z0187-iptal$fisNo", locationId = locationId))
+        assertEquals("spend 2500 10000.0", "${iptal.undone} ${iptal.restored} ${iptal.balance}")
+        assertEquals("""{"actionKey":"kasa3-z0187-iptal42","locationId":"l"}""", rig.server.received.last().body)
+
+        val govde = PassActionBody("earn-stamps", locationId)
+        var printed = ""
+        when (val sonuc = rewloy.passAction(seri, govde, RequestOptions(idempotencyKey = anahtar))) {
+            is PassActionDataOption1 -> printed = "bakiye ${sonuc.balance}"
+            is PassActionDataOption2 -> printed = "${sonuc.uses} kullanım, ${sonuc.usesLeft} kaldı"
+        }
+        assertEquals("bakiye 7500.0", printed)
     }
 
     @Test

@@ -370,10 +370,35 @@ object ApiGenerator {
         return files
     }
 
+    private fun emitUnion(sb: StringBuilder, c: ClassDecl) {
+        sb.append(Naming.kdoc("", c.doc, fallback = "The `${c.name}` answer, of one of several shapes."))
+        sb.append("public sealed class ${c.name} : RewloyObject() {\n")
+        for (p in c.common) {
+            sb.append(Naming.kdoc("    ", p.doc, fallback = "`${p.jsonName}`."))
+            sb.append("    public abstract val ${Naming.ident(p.name)}: ${p.declared}\n\n")
+        }
+        sb.append("    internal companion object {\n")
+        sb.append("        private val shapes = listOf(\n")
+        for (shape in c.shapes) {
+            val tag = shape.tag?.let { "${Naming.literal(it.first)}, ${Naming.literal(it.second)}" } ?: "null, null"
+            sb.append("            Wire.Shape(listOf(${shape.required.joinToString(", ") { Naming.literal(it) }}), listOf(${shape.known.joinToString(", ") { Naming.literal(it) }}), $tag),\n")
+        }
+        sb.append("        )\n\n")
+        sb.append("        fun read(v: JsonValue, path: String): ${c.name} = when (Wire.pickShape(v, path, shapes)) {\n")
+        for ((i, shape) in c.shapes.withIndex()) {
+            sb.append(if (i < c.shapes.size - 1) "            $i -> ${shape.className}.read(v, path)\n" else "            else -> ${shape.className}.read(v, path)\n")
+        }
+        sb.append("        }\n    }\n}\n\n")
+    }
+
     private fun emitClass(sb: StringBuilder, c: ClassDecl) {
+        if (c.kind == ClassKind.UNION) {
+            emitUnion(sb, c)
+            return
+        }
         sb.append(Naming.kdoc("", c.doc, fallback = "The `${c.name}` object."))
         val ordered = if (c.kind == ClassKind.RESPONSE) c.props else c.props.filter { !it.hasDefault } + c.props.filter { it.hasDefault }
-        val base = if (c.kind == ClassKind.QUERY) "RewloyQuery()" else "RewloyObject()"
+        val base = if (c.kind == ClassKind.QUERY) "RewloyQuery()" else (c.parent?.let { "$it()" } ?: "RewloyObject()")
         if (ordered.isEmpty()) {
             sb.append("public class ${c.name} public constructor() : $base {\n")
         } else {
@@ -382,7 +407,7 @@ object ApiGenerator {
                 sb.append(Naming.kdoc("    ", p.doc, fallback = "`${p.jsonName}`."))
                 if (p.deprecated != null) sb.append("    @Deprecated(${Naming.literal(p.deprecated)})\n")
                 val mutability = if (c.kind == ClassKind.RESPONSE) "val" else "var"
-                sb.append("    public $mutability ${Naming.ident(p.name)}: ${p.declared}${if (c.kind != ClassKind.RESPONSE && p.hasDefault) " = null" else ""},\n")
+                sb.append("    public ${if (p.name in c.overrides) "override " else ""}$mutability ${Naming.ident(p.name)}: ${p.declared}${if (c.kind != ClassKind.RESPONSE && p.hasDefault) " = null" else ""},\n")
             }
             sb.append(") : $base {\n")
         }
@@ -411,6 +436,7 @@ object ApiGenerator {
                 for (p in c.props) sb.append("        ${Codec.writeProp(p)}\n")
                 sb.append("        return w.finish(extras())\n    }\n")
             }
+            ClassKind.UNION -> error("a union is emitted by emitUnion")
             ClassKind.QUERY -> {
                 sb.append("    internal override fun writeTo(writer: QueryWriter) {\n")
                 for (p in c.props) sb.append("        ${Codec.writeQuery(p)}\n")

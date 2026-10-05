@@ -53,7 +53,15 @@ class ErrorTest {
         }
         Rig { apiKey("rwk_abc"); maxRetries(0) }.test { rig ->
             rig.server.enqueue(Answer(429, """{"error":{"code":"RATE_LIMITED","message":"x"}}"""))
-            assertNull(assertFailsWith<RateLimitException> { rig.rewloy.getPass("S") }.retryAfterSeconds)
+            val e = assertFailsWith<RateLimitException> { rig.rewloy.getPass("S") }
+            assertNull(e.retryAfterSeconds)
+            assertNull(e.rateLimit)
+        }
+        Rig { apiKey("rwk_abc"); maxRetries(0) }.test { rig ->
+            rig.server.enqueue(Answer(429, """{"error":{"code":"RATE_LIMITED","message":"x"}}""", mapOf("Retry-After" to "9", "RateLimit-Limit" to "60", "RateLimit-Remaining" to "0", "RateLimit-Reset" to "9")))
+            val e = assertFailsWith<RateLimitException> { rig.rewloy.getPass("S") }
+            assertEquals(RewloyRateLimit(60, 0, 9), e.rateLimit)
+            assertEquals(9L, e.retryAfterSeconds)
         }
     }
 

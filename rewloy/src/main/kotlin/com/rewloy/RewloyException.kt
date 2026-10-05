@@ -39,6 +39,9 @@ public open class RewloyException @JvmOverloads constructor(
     public val operation: String? = null,
     cause: Throwable? = null,
 ) : RuntimeException(buildMessage(status, code, detail, operation, requestId), cause) {
+    /** The `RateLimit-*` headers of the answer; `null` when it carried none. */
+    public val rateLimit: RewloyRateLimit? get() = RewloyRateLimit.from(headers)
+
     private companion object {
         fun buildMessage(status: Int, code: String, detail: String, operation: String?, requestId: String?): String {
             val where = listOfNotNull(operation, requestId?.let { "requestId $it" }).filter { it.isNotEmpty() }.joinToString(", ")

@@ -49,10 +49,10 @@ Sonra projenizde `mavenLocal()` açıkken:
 
 ```kotlin
 dependencies {
-    implementation("com.rewloy:rewloy:0.2.1")
+    implementation("com.rewloy:rewloy:0.2.2")
     // isteğe bağlı:
-    implementation("com.rewloy:rewloy-okhttp:0.2.1")      // OkHttp taşıyıcısı
-    implementation("com.rewloy:rewloy-coroutines:0.2.1")  // suspend ve Flow
+    implementation("com.rewloy:rewloy-okhttp:0.2.2")      // OkHttp taşıyıcısı
+    implementation("com.rewloy:rewloy-coroutines:0.2.2")  // suspend ve Flow
 }
 ```
 
@@ -224,6 +224,54 @@ println("${geri.reversed} ${geri.applied} geri alındı, bakiye ${geri.balance}"
 Bir satış bir kez geri alınır (tekrar `duplicate: true` döner). Kazanılan
 kullanılmışsa (ödüle ya da harcamaya gitmişse) `409 SALE_ALREADY_SPENT` gelir ve
 hiçbir şey yazılmaz.
+
+**Çevrimdışı kasa kuyruğu: `occurredAt`.** Bağlantı koptuğunda satışı sonra
+yazıyorsanız `occurredAt` ile satışın gerçekten olduğu anı (ISO 8601 metni, saat
+dilimiyle) gönderin; kartın geçmişinde o anla görünür. Gelecekte olamaz (2
+dakikalık saat farkı kabul edilir). `idempotencyKey` kuyruktaki kayıtla birlikte
+saklanır, tekrar gönderilince satış ikinci kez yazılmaz.
+
+```kotlin
+rewloy.recordSale(
+    seri,
+    RecordSaleBody(amountMinor = 4550, locationId = locationId, reference = "fis-$fisNo", occurredAt = "2026-10-05T14:32:10+03:00"),
+    RequestOptions(idempotencyKey = anahtar),
+)
+```
+
+**Kasa işlemini iptal etmek: `reverseAction`.** `passAction` ile yapılan bir
+harcama, ödül ya da kullanım yanlışlıkla yapıldıysa (`spend`, `spend-points`,
+`redeem-stamps`, `redeem-reward`, `use`) `reverseAction` tamamını geri verir.
+İşlemi, yaparken gönderdiğiniz `Idempotency-Key` (`actionKey`) ya da işlemin
+`reference` değeriyle bulur (`PassActionBody` artık isteğe bağlı bir `reference`
+alır). `reverseAction` bir `Idempotency-Key` **istemez**: bir işlem bir kez geri
+alınır, tekrar `duplicate: true` döner.
+
+```kotlin
+rewloy.passAction(
+    seri,
+    PassActionBody("spend", locationId).apply { amountMinor = 2500 },
+    RequestOptions(idempotencyKey = "kasa3-z0187-iptal$fisNo"),
+)
+val iptal = rewloy.reverseAction(seri, ReverseActionBody(actionKey = "kasa3-z0187-iptal$fisNo", locationId = locationId))   // ya da reference = "fis-$fisNo"
+println("${iptal.undone} ${iptal.restored} geri verildi, bakiye ${iptal.balance}")
+```
+
+`passAction`ın yanıtı kart türüne göre iki biçimdedir ve `PassActionData`
+mühürlü (`sealed`) bir sınıftır: bakiyeli kartlarda `PassActionDataOption1`
+(`balance`: damga, puan, VIP, cashback, hediye kartı), kupon ve indirim kartında
+`PassActionDataOption2` (`status`, `uses`, `usesLeft`). İkisinde de olan
+`duplicate` doğrudan okunur; gerisi için `when` kullanın (Java'da `instanceof`):
+
+```kotlin
+when (val sonuc = rewloy.passAction(seri, govde, RequestOptions(idempotencyKey = anahtar))) {
+    is PassActionDataOption1 -> println("bakiye ${sonuc.balance}")
+    is PassActionDataOption2 -> println("${sonuc.uses} kullanım, ${sonuc.usesLeft} kaldı")
+}
+```
+
+Kazanımlar (`earn-stamps`, `earn-points`, `visit`) `reverseAction`la değil
+`reverseSale`la geri alınır.
 
 ### `Idempotency-Key`
 
@@ -401,7 +449,9 @@ try {
 - `body`, `headers` ve `operation`.
 
 Alt sınıflar:
-- `RateLimitException`: `429`; `retryAfterSeconds`;
+- `RateLimitException`: `429`; `retryAfterSeconds`. Her istisna (bu dahil)
+  yanıtın `RateLimit-*` başlıklarını `rateLimit` olarak verir
+  (`limit`, `remaining`, `resetSeconds`; başlık yoksa `null`);
 - `RewloyConnectionException`: yanıt gelmedi (`status` 0, `code`
   `CONNECTION_ERROR`);
 - `RewloyTimeoutException`: zaman aşımı (`TIMEOUT`).
@@ -440,13 +490,15 @@ val yanit = rewloy.sendCampaignWithResponse(SendCampaignBody("Bu hafta kahveler 
 yanit.statusCode  // 201
 yanit.replayed    // true: aynı anahtarın ilk yanıtı yeniden döndü (Idempotent-Replayed)
 yanit.requestId   // x-request-id
+yanit.rateLimit   // RateLimit-* başlıkları: limit, remaining, resetSeconds (yoksa null)
 yanit.mode        // Rewloy-Mode
 yanit.isTestMode  // mode == "test"
 yanit.data        // kampanya
 ```
 
 Sonu `WithResponse` olan her metot yanıtın tamamını döndürür: `data`, sayfalı
-listede `meta`, `statusCode`, `headers`, `requestId`, `mode` ve `replayed`.
+listede `meta`, `statusCode`, `headers`, `requestId`, `rateLimit`, `mode` ve
+`replayed`.
 
 `mode`, yanıtın `Rewloy-Mode` başlığıdır: `live` ya da `test`. Başlık yoksa
 `null`. Canlı akışta aynı bilgi `akis.mode`dadır.
@@ -484,7 +536,7 @@ sürümünde vardır, ek bağımlılık gerektirmez. Yönlendirmeleri izlemez.
 
 - **`PATCH`.** Android'in `HttpURLConnection`'ı `PATCH` gönderir. Masaüstü JDK'sı
   göndermez: Java 11'e kadar kütüphane bunu aşar; Java 12 ve üstünde `PATCH`
-  (API'nin 237 işleminden 11'i) `UnsupportedOperationException` atar ve
+  (API'nin 256 işleminden 12'si) `UnsupportedOperationException` atar ve
   `rewloy-okhttp`'a yönlendirir. Sunucu tarafında Java 12+ kullanıyorsanız
   OkHttp taşıyıcısını kullanın.
 - **OkHttp.** Uygulamanızda zaten bir `OkHttpClient` (kendi havuzu, vekil ve
@@ -504,7 +556,7 @@ rewloy.suspending { liveFeed() }.asFlow().collect { println(it.json()) }
 ```
 
 `suspending` bloğu `Dispatchers.IO`'da çalıştırır; coroutine iptal edilince
-uçuştaki istek de iptal edilir. 237 metodun bir de `suspend` ikizini
+uçuştaki istek de iptal edilir. Yüzlerce metodun bir de `suspend` ikizini
 üretmek yerine tek bir genel sarmalayıcı verilir: blok içinde birkaç çağrı
 yapabilir, sayfalı bir listeyi dolaşabilirsiniz.
 
@@ -611,9 +663,9 @@ git clone https://github.com/Rewloy/rewloy-kotlin && cd rewloy-kotlin && ./gradl
 
 ```kotlin
 dependencies {
-    implementation("com.rewloy:rewloy:0.2.1")
-    implementation("com.rewloy:rewloy-okhttp:0.2.1")      // optional: an OkHttp transport
-    implementation("com.rewloy:rewloy-coroutines:0.2.1")  // optional: suspend and Flow
+    implementation("com.rewloy:rewloy:0.2.2")
+    implementation("com.rewloy:rewloy-okhttp:0.2.2")      // optional: an OkHttp transport
+    implementation("com.rewloy:rewloy-coroutines:0.2.2")  // optional: suspend and Flow
 }
 ```
 
@@ -630,6 +682,15 @@ val sale = rewloy.recordSale(
     RecordSaleBody(amountMinor = 4550, locationId = locationId, reference = "receipt-$receiptNo"),   // amount in the card's currency, minor units
     RequestOptions(idempotencyKey = "till3-z0187-r$receiptNo"),
 )
+
+// A gift-card spend rung up by mistake? Void it by the key it was sent with:
+rewloy.passAction(
+    card.serial,
+    PassActionBody("spend", locationId).apply { amountMinor = 2500 },
+    RequestOptions(idempotencyKey = "till3-z0187-s$receiptNo"),
+)
+val voided = rewloy.reverseAction(card.serial, ReverseActionBody(actionKey = "till3-z0187-s$receiptNo"))
+println("${voided.undone} ${voided.restored} ${voided.balance}")   // spend 2500 and the balance again
 ```
 
 ```java
@@ -645,7 +706,20 @@ RecordSaleData sale = rewloy.recordSale(serial, body, RequestOptions.builder().i
   the programme's own rule decide what is written); `getPass` returns the
   card's structured fields (`programName`, `currency`, `stamps`, `points`,
   `money`, `customer`); `reverseSale` takes a refunded sale back:
-  `rewloy.reverseSale(serial, ReverseSaleBody(saleKey = key))`.
+  `rewloy.reverseSale(serial, ReverseSaleBody(saleKey = key))`. A void is
+  `reverseAction`: it takes back a `passAction` that was a mistake (`spend`,
+  `spend-points`, `redeem-stamps`, `redeem-reward`, `use`), found by the
+  `Idempotency-Key` you sent with it (`actionKey`) or its `reference`; it needs
+  no `Idempotency-Key` of its own, and a repeat answers `duplicate = true`:
+  `rewloy.reverseAction(serial, ReverseActionBody(actionKey = key))`. A till that
+  queues sales while offline sets `RecordSaleBody.occurredAt` (ISO 8601 text with
+  the UTC offset, not in the future), so the card's history shows when the sale
+  really happened; the queued `idempotencyKey` makes the resend safe.
+  `PassActionBody` takes an optional `reference` too, and its answer,
+  `PassActionData`, is a sealed class: `PassActionDataOption1` (the
+  balance-card answer, `balance`) or `PassActionDataOption2` (the coupon /
+  discount-card answer, `status`, `uses`, `usesLeft`); `duplicate` is on the
+  base, and a `when` over the two is exhaustive.
 - **Idempotency keys.** `recordSale`, `passAction`, `sendCampaign` and
   `refundShopRedemption` need an `Idempotency-Key`: the API's OpenAPI document
   marks the header required for them, so `RequestOptions.idempotencyKey` is
@@ -675,7 +749,8 @@ RecordSaleData sale = rewloy.recordSale(serial, body, RequestOptions.builder().i
   OpenAPI document. Ids and timestamps are `String`s (`java.time` is missing
   from Android before 8).
 - **The whole answer.** `…WithResponse` methods return `statusCode`,
-  `headers`, `requestId`, `mode` (the `Rewloy-Mode` header: `live` or `test`; `isTestMode`) and
+  `headers`, `requestId`, `rateLimit` (`limit`, `remaining`, `resetSeconds` from
+  the `RateLimit-*` headers; `null` when absent), `mode` (the `Rewloy-Mode` header: `live` or `test`; `isTestMode`) and
   `replayed` (`Idempotent-Replayed`) beside the data.
 - **Pagination.** `rewloy.listCustomersAll(query)` is an `Iterable` over the
   items of every page.
@@ -706,7 +781,7 @@ val event = Webhook.verify(rawBody, request.header("Rewloy-Signature"), secret)
 
 - **Errors.** Failures throw `RewloyException` (unchecked) with `status`,
   `code` (the API's stable code, constants in `ErrorCode`), `title`, `detail`,
-  `details`, `requestId` and `body`. Subclasses: `RateLimitException`
+  `details`, `requestId`, `rateLimit` and `body`. Subclasses: `RateLimitException`
   (`retryAfterSeconds`), `RewloyConnectionException` and `RewloyTimeoutException`.
 - **What is retried.** Network errors, timeouts, 429, 502–504 and
   Cloudflare's 520–524, up to `maxRetries` (default 2), with exponential
@@ -720,8 +795,8 @@ val event = Webhook.verify(rawBody, request.header("Rewloy-Signature"), secret)
 
 ### `PATCH` and the JDK
 
-Android's `HttpURLConnection` sends `PATCH`; the desktop JDK's does not (11 of
-the 237 operations are `PATCH`). Up to Java 11 the library works around it; from
+Android's `HttpURLConnection` sends `PATCH`; the desktop JDK's does not (12 of
+the 256 operations are `PATCH`). Up to Java 11 the library works around it; from
 Java 12 on, use the OkHttp transport (`com.rewloy:rewloy-okhttp`).
 
 ### Security and licence

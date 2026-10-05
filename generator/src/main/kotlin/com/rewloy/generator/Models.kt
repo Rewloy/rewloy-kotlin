@@ -31,7 +31,7 @@ internal sealed class KType {
 
 internal data class Mapped(val type: KType, val nullable: Boolean)
 
-internal enum class ClassKind { REQUEST, RESPONSE, QUERY }
+internal enum class ClassKind { REQUEST, RESPONSE, QUERY, UNION }
 
 internal class PropDecl(
     val jsonName: String,
@@ -61,9 +61,18 @@ internal class PropDecl(
     val hasDefault: Boolean get() = declared.endsWith("?") && !required
 }
 
+/** One shape of a union of objects: the class that holds it, and what tells it from the others in an answer. */
+internal class UnionShape(
+    val className: String,
+    val required: List<String>,
+    val known: List<String>,
+    /** A property that is a `const` string in this shape: its name and value. */
+    val tag: Pair<String, String>?,
+)
+
 internal class ClassDecl(
     val name: String,
-    val doc: String?,
+    var doc: String?,
     val kind: ClassKind,
     /** The operation's tag: which file the class goes to. */
     val tag: String,
@@ -71,6 +80,18 @@ internal class ClassDecl(
 ) {
     val props = ArrayList<PropDecl>()
     var pageType: KType? = null
+
+    /** The sealed class this one is a shape of (a union of objects). */
+    var parent: String? = null
+
+    /** For [ClassKind.UNION]: the shapes, in the document's order. */
+    var shapes: List<UnionShape> = emptyList()
+
+    /** For [ClassKind.UNION]: the properties every shape has with the same type, declared abstract here. */
+    var common: List<PropDecl> = emptyList()
+
+    /** For a shape of a union: the names of its properties that override the sealed class's. */
+    var overrides: Set<String> = emptySet()
 }
 
 /**
@@ -79,7 +100,10 @@ internal class ClassDecl(
  * The choices (docs/DECISIONS.md explains them):
  * - an object schema with properties becomes a class: for a request, a body or a query, a `var` property each
  *   (required ones first, without a default; the rest `null`); for an answer, immutable `val`s;
- * - a free-form object, an unknown type and a real union (a `oneOf` of different shapes) stay `JsonValue`;
+ * - a union of objects (a `oneOf` of different shapes, such as the two answers of passAction) becomes a sealed class with a
+ *   class per shape, named after the property that tells them apart (`kind`: `Staff`, `Key`) or `Option1`, `Option2`; the
+ *   reader picks the shape by the fields the answer has. Anything else that is a real union, a free-form object and an
+ *   unknown type stay `JsonValue`;
  * - enums stay `String` (and integer enums stay numbers): an enum type would throw on the day the API adds a value;
  * - ids and timestamps stay `String`: opaque ids need no parsing, and `java.time` is missing from older Android.
  */
@@ -141,7 +165,7 @@ internal class ModelBuilder(claimable: Collection<String>, private val reserved:
         schema.prop("const")?.let { return constType(it) }
         if (schema.prop("allOf") != null) throw GeneratorException("$where: allOf is not supported")
         val union = schema.prop("oneOf") ?: schema.prop("anyOf")
-        if (union != null) return mapUnion(union, where)
+        if (union != null) return mapUnion(union, hint, request, where)
 
         var nullInTypes = false
         val types = ArrayList<String>()
@@ -187,7 +211,8 @@ internal class ModelBuilder(claimable: Collection<String>, private val reserved:
         return if (min != null && max != null && min >= Int.MIN_VALUE && max <= Int.MAX_VALUE) KType.Int32 else KType.Int64
     }
 
-    private fun mapUnion(members: JsonValue, where: String): Mapped {
+    private fun mapUnion(members: JsonValue, hint: String, request: Boolean, where: String): Mapped {
+        if (!request) unionOfObjects(members, hint, where)?.let { return it }
         val types = LinkedHashSet<KType>()
         var nullable = false
         for (member in members.items()) {
@@ -209,6 +234,59 @@ internal class ModelBuilder(claimable: Collection<String>, private val reserved:
         }
         if (types.size != 1) return Mapped(KType.Json, false)
         return Mapped(types.first(), nullable)
+    }
+
+    /**
+     * A sealed class for a union whose members are all objects with properties, or `null` when it is something else.
+     * Each member becomes a class of its own (so its fields are typed, required ones included); the sealed class's
+     * reader picks the shape the answer has: the members whose required fields are all present, the one with the
+     * most known fields among them, and a `const` string field must match.
+     */
+    private fun unionOfObjects(members: JsonValue, hint: String, where: String): Mapped? {
+        val list = members.items()
+        if (list.size < 2 || list.any { m ->
+                m !is com.rewloy.json.JsonObject || m.str("type") != "object" || m.prop("properties").members().isEmpty() || m.prop("oneOf") != null ||
+                    m.prop("anyOf") != null || m.prop("allOf") != null || m.prop("\$ref") != null || m.flag("nullable")
+            }
+        ) {
+            return null
+        }
+        // The property that is a distinct `const` string in every member names the shapes (`kind` = "staff" is `Staff`).
+        val tagNames = list.map { m -> m.prop("properties").members().filter { (_, v) -> v.prop("const") is JsonString }.keys.toList() }
+        val discriminator = tagNames.first().firstOrNull { name ->
+            tagNames.all { name in it } &&
+                list.map { (it.prop("properties").prop(name)!!.prop("const") as JsonString).value }.let { values -> values.toSet().size == values.size }
+        }
+        val suffixes = list.mapIndexed { i, m ->
+            if (discriminator != null) Naming.pascal((m.prop("properties").prop(discriminator)!!.prop("const") as JsonString).value) else "Option${i + 1}"
+        }
+        if (suffixes.toSet().size != suffixes.size) return null
+
+        val base = reserve(hint)
+        val union = ClassDecl(base, null, ClassKind.UNION, tag)
+        classes.add(union)
+        val shapes = ArrayList<UnionShape>()
+        val variants = ArrayList<String>()
+        for ((i, member) in list.withIndex()) {
+            val type = mapObject(member, base + suffixes[i], request = false, "$where<${suffixes[i]}>").type as KType.Obj
+            val decl = classes.first { it.name == type.name }
+            decl.parent = base
+            val title = member.str("title")
+            val description = member.str("description")
+            decl.doc = listOfNotNull(title, description).joinToString(": ").ifEmpty { null }
+            variants.add("- [${type.name}]" + (decl.doc?.let { ": $it" } ?: ""))
+            val tag = discriminator?.let { it to (member.prop("properties").prop(it)!!.prop("const") as JsonString).value }
+            shapes.add(UnionShape(type.name, member.prop("required").items().mapNotNull { it.str() }, member.prop("properties").members().keys.toList(), tag))
+        }
+        union.shapes = shapes
+        // What every shape has, required and of one type (`duplicate`), is a property of the sealed class: no `when` needed to read it.
+        val decls = shapes.map { sh -> classes.first { it.name == sh.className } }
+        union.common = decls.first().props.filter { p ->
+            p.deprecated == null && decls.all { d -> d.props.any { q -> q.jsonName == p.jsonName && q.name == p.name && q.type == p.type && q.nullable == p.nullable && q.required && p.required && q.deprecated == null } }
+        }
+        for (d in decls) d.overrides = union.common.map { it.name }.toSet()
+        union.doc = "An answer of one of ${list.size} shapes: `when (answer) { is X -> … }` tells them apart.\n\n" + variants.joinToString("\n")
+        return Mapped(KType.Obj(base), false)
     }
 
     private fun mapArray(schema: JsonValue, hint: String, request: Boolean, where: String): Mapped {

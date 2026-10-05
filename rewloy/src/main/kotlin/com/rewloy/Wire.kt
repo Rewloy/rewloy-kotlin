@@ -26,6 +26,30 @@ private fun kind(v: JsonValue): String = when (v) {
  * nobody declared is kept in `additionalProperties`; a `null` for an optional field is the same as leaving it out).
  */
 internal object Wire {
+    /** One shape of a union of objects (a `oneOf`): the fields it requires, the fields it knows, a `const` string field. */
+    class Shape(val required: List<String>, val known: List<String>, val tagName: String?, val tagValue: String?)
+
+    /**
+     * Which [shapes] an answer has: of those whose required fields are all present (a field that is `null` counts) and
+     * whose `const` field matches, the one with the most known fields in the answer; the first on a tie.
+     */
+    fun pickShape(v: JsonValue, path: String, shapes: List<Shape>): Int {
+        val members = (v as? JsonObject)?.members ?: throw shape(path, "an object", v)
+        var best = -1
+        var bestScore = -1
+        for ((i, s) in shapes.withIndex()) {
+            if (!s.required.all { it in members }) continue
+            if (s.tagName != null && (members[s.tagName] as? JsonString)?.value != s.tagValue) continue
+            val score = s.known.count { it in members }
+            if (score > bestScore) {
+                best = i
+                bestScore = score
+            }
+        }
+        if (best < 0) throw ResponseShapeException("$path: the answer has none of the ${shapes.size} shapes the API documents")
+        return best
+    }
+
     fun shape(path: String, expected: String, v: JsonValue?): ResponseShapeException =
         ResponseShapeException("$path: expected $expected" + (if (v == null) ", the field is missing" else ", got ${kind(v)}"))
 

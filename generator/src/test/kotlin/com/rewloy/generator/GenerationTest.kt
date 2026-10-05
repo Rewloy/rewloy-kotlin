@@ -105,6 +105,25 @@ class GenerationTest {
     }
 
     @Test
+    fun `a union of objects is a sealed class with a class per shape`() {
+        val answer = """{"oneOf":[
+            {"type":"object","title":"A","properties":{"ok":{"type":"boolean"},"balance":{"type":"number"},"kind":{"const":"a"}},"required":["ok","balance","kind"]},
+            {"type":"object","properties":{"ok":{"type":"boolean"},"uses":{"type":"integer"},"kind":{"const":"b"}},"required":["ok","uses","kind"]}]}"""
+        val code = generated("""{"/v1/a":{${op("getA", responses = """{"200":{"content":{"application/json":{"schema":{"type":"object","properties":{"data":$answer}}}}}}""")}}}""")
+        assertTrue("public fun getA(options: RequestOptions? = null): GetADataA =" !in code)
+        assertTrue("public fun getA(options: RequestOptions? = null): GetAData =" in code)
+        assertTrue("public sealed class GetAData : RewloyObject() {" in code)
+        assertTrue("public abstract val ok: Boolean" in code, "what every shape has is on the sealed class")
+        assertTrue("public class GetADataA(" in code && "public class GetADataB(" in code, "named after the const property")
+        assertTrue(") : GetAData() {" in code)
+        assertTrue("public override val ok: Boolean," in code)
+        assertTrue("Wire.Shape(listOf(\"ok\", \"balance\", \"kind\"), listOf(\"ok\", \"balance\", \"kind\"), \"kind\", \"a\")" in code)
+        // Members that are not all objects stay a JsonValue.
+        val mixed = generated("""{"/v1/a":{${op("getA", responses = """{"200":{"content":{"application/json":{"schema":{"type":"object","properties":{"data":{"oneOf":[{"type":"object","properties":{"x":{"type":"string"}}},{"type":"array","items":{"type":"string"}}]}}}}}}}""")}}}""")
+        assertTrue("public fun getA(options: RequestOptions? = null): JsonValue =" in mixed)
+    }
+
+    @Test
     fun `reads the platform's structured deprecation`() {
         val code = generated(
             """{"/v1/a":{${op("oldA", extra = """"deprecated":true,"x-deprecation":{"sunset":"2027-04-05","use":"newA"}""")}},"/v1/b":{${op("newA")}}}""",
