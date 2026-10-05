@@ -333,6 +333,12 @@ public class ListCustomerCardsItem(
      * Always present.
      */
     public val identifiers: List<ListCustomerCardsItemIdentifiersItem>,
+    /**
+     * `q` bir kart numarası olarak okundu ve bu kartın numarası onunla başlıyor: aranan kart bu (kişinin öteki kartları false)
+     *
+     * Always present.
+     */
+    public val matched: Boolean,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): ListCustomerCardsItem {
@@ -353,6 +359,7 @@ public class ListCustomerCardsItem(
                 displayName = o.str("displayName"),
                 email = o.strOrNull("email"),
                 identifiers = o.req("identifiers") { x, y -> Wire.list(x, y) { v1, p1 -> ListCustomerCardsItemIdentifiersItem.read(v1, p1) } },
+                matched = o.bool("matched"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -766,7 +773,7 @@ public class CustomerTimelineItem(
     /** Always present. */
     public val at: String,
     /**
-     * earn, redeem, spend, load, …; visit; campaign, automation:<tür>, sequence; issued; verified:phone; changed:email, changed:phone
+     * earn, redeem, spend, load, …; hold, release, refund (online ödeme kodu, ADR 179); visit; campaign, automation:<tür>, sequence; issued; verified:phone; changed:email, changed:phone
      *
      * Always present.
      */

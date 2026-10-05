@@ -258,10 +258,13 @@ public class GetAnalyticsQuery(
     public var days: Long? = null,
     /** Tek bir şube (kapsamınız içinde) */
     public var locationId: String? = null,
+    /** Tek bir program (kapsamınız içinde). Kapsamı programlarla sınırlı bir kimlik (ör. mağaza eklentisinin anahtarı) yalnız kendi programlarını görür; programsız istekte de yalnız onlar sayılır. */
+    public var programId: String? = null,
 ) : RewloyQuery() {
     internal override fun writeTo(writer: QueryWriter) {
         writer.add("days", this.days)
         writer.add("locationId", this.locationId)
+        writer.add("programId", this.programId)
     }
 }
 
@@ -517,9 +520,9 @@ public class ListActivityQuery(
     public var seatId: String? = null,
     /** YYYY-AA-GG */
     public var day: String? = null,
-    /** One of: `earn`, `redeem`, `spend`, `load`, `accrue`, `visit`, `use`, `issue`, `adjust`, `expire`. */
+    /** One of: `earn`, `redeem`, `spend`, `load`, `accrue`, `visit`, `use`, `issue`, `adjust`, `expire`, `hold`, `release`, `refund`. */
     public var kind: String? = null,
-    /** `programId`. */
+    /** Tek bir program (kapsamınız içinde). Kapsamı programlarla sınırlı bir kimlik (ör. mağaza eklentisinin anahtarı) yalnız kendi programlarını görür; programsız istekte de yalnız onlar sayılır. */
     public var programId: String? = null,
     /** Kart numarası ya da başı */
     public var serial: String? = null,
@@ -560,9 +563,17 @@ public class ListActivityItem(
     public val kind: String,
     /** Always present. */
     public val delta: Double?,
-    /** Always present. */
+    /**
+     * `delta`'nın birimi: `stamp` damga, `point` puan, `visit` ziyaret, `try_minor` para (kuruş). `try_minor` donmuş bir addır: Türk lirası demek değildir, `currency` biriminin kuruşudur (ör. EUR işletmede euro sent). Kupon ve indirim kullanımında null.
+     *
+     * Always present.
+     */
     public val unit: String?,
-    /** Always present. */
+    /**
+     * Para hareketinde `delta`'nın para birimi (programın, yoksa işletmenin; ISO 4217). Damga, puan ve ziyarette de gelir ama yalnız `unit: "try_minor"` iken anlamlıdır; kupon ve indirim kullanımında null.
+     *
+     * Always present.
+     */
     public val currency: String?,
     /** Always present. */
     public val serial: String,

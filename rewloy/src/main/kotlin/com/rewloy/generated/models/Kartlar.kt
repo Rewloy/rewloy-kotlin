@@ -17,10 +17,12 @@ public class IssuePassBody(
     public var name: String? = null,
     /** `homeLocationId`. */
     public var homeLocationId: String? = null,
-    /** Hediye kartı tutarı, kuruş */
+    /** Hediye kartı tutarı, programın para biriminde, kuruş */
     public var faceMinor: Int? = null,
     /** `kvkkConsent`. */
     public var kvkkConsent: Boolean? = null,
+    /** İsteğe bağlı: tutarın para birimi (ISO 4217, ör. `TRY`, `EUR`, büyük-küçük harf önemsiz). Tutar **kartın para birimindedir** (programın para birimi: `GET /v1/passes/{serial}` → `currency`, `GET /v1/programs/{id}`); verilirse onunla karşılaştırılır, farklıysa `422 CURRENCY_MISMATCH` (`details.currency` kartınki) ve hiçbir şey yazılmaz. Tutar çevrilmez. */
+    public var currency: String? = null,
     /** `firstName`. */
     public var firstName: String? = null,
     /** `lastName`. */
@@ -33,10 +35,21 @@ public class IssuePassBody(
     public var orderId: String? = null,
     /** Siparişin geldiği mağaza bağlantısı (`GET /v1/shops`). `orderId` ile birlikte. */
     public var shopId: String? = null,
+    /**
+     * Kişinin bu programda açık kartı varsa: `create` (varsayılan) yine yeni kart açar, `return` o kartı döndürür (`created: false`). `email` ister.
+     *
+     * One of: `create`, `return`.
+     */
+    public var ifExists: String? = null,
+    /** true: kartın bağlantısı kişinin e-postasına gider (katılım formunun e-postası). `email` ister. */
+    public var sendEmail: Boolean? = null,
 ) : RewloyObject() {
     /** The required fields only; set the rest with the setters. */
     public constructor(programId: String) : this(
         programId,
+        null,
+        null,
+        null,
         null,
         null,
         null,
@@ -58,12 +71,15 @@ public class IssuePassBody(
         w.str("homeLocationId", this.homeLocationId)
         w.int("faceMinor", this.faceMinor)
         w.bool("kvkkConsent", this.kvkkConsent)
+        w.str("currency", this.currency)
         w.str("firstName", this.firstName)
         w.str("lastName", this.lastName)
         w.str("phone", this.phone)
         w.str("birthday", this.birthday)
         w.str("orderId", this.orderId)
         w.str("shopId", this.shopId)
+        w.str("ifExists", this.ifExists)
+        w.bool("sendEmail", this.sendEmail)
         return w.finish(extras())
     }
 }
@@ -72,8 +88,24 @@ public class IssuePassBody(
 public class IssuePassData(
     /** Always present. */
     public val serial: String,
-    /** Always present. */
+    /**
+     * Yeni kartta müşterinin özel kart bağlantısı (`?k=…`): müşteriye iletin, kayıtlara yazmayın. Var olan kartta (`created: false`) görüntüleme anahtarı taşımayan adres.
+     *
+     * Always present.
+     */
     public val cardUrl: String,
+    /**
+     * true: yeni kart açıldı · false: `ifExists: "return"` ile kişinin var olan kartı döndü
+     *
+     * Always present.
+     */
+    public val created: Boolean,
+    /**
+     * Yalnız `sendEmail: true` iken: e-postaya ne oldu (`queued`, `suppressed`, `rate_limited`, `not_sent`)
+     *
+     * One of: `queued`, `suppressed`, `rate_limited`, `not_sent`.
+     */
+    public val emailStatus: String?,
     /** Yalnız `orderId` gönderildiyse: siparişin bu karta ne olduğu. */
     public val order: IssuePassDataOrder?,
 ) : RewloyObject() {
@@ -83,6 +115,8 @@ public class IssuePassData(
             return IssuePassData(
                 serial = o.str("serial"),
                 cardUrl = o.str("cardUrl"),
+                created = o.bool("created"),
+                emailStatus = o.strOrNull("emailStatus"),
                 order = o.opt("order") { x, y -> IssuePassDataOrder.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
@@ -140,18 +174,46 @@ public class GetPassData(
     /** Always present. */
     public val status: String,
     /**
-     * Damga, puan, ziyaret ya da kuruş (türüne göre).
+     * Programın adı (ADR 182)
+     *
+     * Always present.
+     */
+    public val programName: String,
+    /**
+     * Kartın para birimi (ISO 4217, ör. `TRY`, `EUR`): programın para birimi — cashback ve hediye kartında programın kendi para birimi, öteki türlerde işletmeninki. Bu karttaki satışın ve işlemlerin `amountMinor`'ı bu birimdedir ve `currency` alanları bununla karşılaştırılır (ADR 182)
+     *
+     * Always present.
+     */
+    public val currency: String,
+    /**
+     * Türe göre birimi değişir: damga kartında damga, puan kartında puan, VIP'te ziyaret, cashback ve hediye kartında kuruş (`money.currency` cinsinden); kupon ve indirim kartının bakiyesi yoktur (0). Yeni kodda türe özgü alanları okuyun: `stamps`, `points`, `money`.
      *
      * Always present.
      */
     public val balance: Double?,
+    /** Yalnız damga kartında: kartta şu an kaç damga var (`count`) ve bir ödül kaç damga ister (`max`). Hazır ödül sayısı `floor(count / max)`, sıradaki ödüle doğru damga `count % max`; program ödülden sonra damga biriktiriyorsa `count` `max`'ı aşabilir. */
+    public val stamps: GetPassDataStamps?,
+    /** Yalnız puan kartında: puan bakiyesi */
+    public val points: Long?,
+    /** Yalnız cashback ve hediye kartında: harcanabilir bakiye, kuruş, ve para birimi. Online bir siparişe ayrılan tutar düşülmüştür. */
+    public val money: GetPassDataMoney?,
+    /** Yalnız kimlik `customers.read` taşıyorsa (kartın programında): kartın müşterisi. null: kartın müşterisi yok, ya da müşteri kimliğin şube kapsamının dışında. Yetki yoksa alan gelmez. */
+    public val customer: GetPassDataCustomer?,
     /** `progressLabel`. */
     public val progressLabel: String?,
-    /** `progressValue`. */
+    /** Cüzdandaki ilerleme yazısı, gösterim içindir, ayrıştırmayın: damga kartında ödül hazır olana dek `"3 / 8"`, hazır olunca ödülün adı (`"Bedava kahve"`, birden çoksa `"2 × Bedava kahve"`); puanda bakiye; VIP'te seviye adı; cashback ve hediye kartında biçimlenmiş tutar (`"€2,25"`); kuponda teklif metni; indirimde `"%10"`. */
     public val progressValue: String?,
-    /** Always present. */
+    /**
+     * Damga: en az bir dolu kart · puan: bakiye en az bir ödüle yetiyor · VIP: bir seviyede · cashback ve hediye kartı: bakiye sıfırdan büyük (harcanacak bir şey var; bir "ödül" değil) · kupon ve indirim: her zaman true (kartın kendisi teklif). Kasada bir işlemin yapılıp yapılamayacağı için `actions[].ready` okuyun.
+     *
+     * Always present.
+     */
     public val rewardReady: Boolean,
-    /** Always present. */
+    /**
+     * Damga: hazır ödül sayısı · puan: bakiyenin yettiği ödül basamağı sayısı · VIP: seviyedeyse 1 · cashback ve hediye kartı: bakiye varsa 1 · kupon ve indirim: 0
+     *
+     * Always present.
+     */
     public val rewardsReady: Int,
     /** `tier`. */
     public val tier: String?,
@@ -161,6 +223,14 @@ public class GetPassData(
     public val nextReward: JsonValue?,
     /** Always present. */
     public val updatedAt: String,
+    /**
+     * Bu kartın türünün aldığı kasa işlemleri (`POST /v1/passes/{serial}/actions`)
+     *
+     * Always present.
+     */
+    public val actions: List<GetPassDataActionsItem>,
+    /** Always present. */
+    public val sale: GetPassDataSale,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): GetPassData {
@@ -170,7 +240,13 @@ public class GetPassData(
                 programId = o.str("programId"),
                 type = o.str("type"),
                 status = o.str("status"),
+                programName = o.str("programName"),
+                currency = o.str("currency"),
                 balance = o.doubleOrNull("balance"),
+                stamps = o.opt("stamps") { x, y -> GetPassDataStamps.read(x, y) },
+                points = o.longOrNull("points"),
+                money = o.opt("money") { x, y -> GetPassDataMoney.read(x, y) },
+                customer = o.opt("customer") { x, y -> GetPassDataCustomer.read(x, y) },
                 progressLabel = o.strOrNull("progressLabel"),
                 progressValue = o.strOrNull("progressValue"),
                 rewardReady = o.bool("rewardReady"),
@@ -179,6 +255,117 @@ public class GetPassData(
                 nextTier = o.jsonOrNull("nextTier"),
                 nextReward = o.jsonOrNull("nextReward"),
                 updatedAt = o.str("updatedAt"),
+                actions = o.req("actions") { x, y -> Wire.list(x, y) { v1, p1 -> GetPassDataActionsItem.read(v1, p1) } },
+                sale = o.req("sale") { x, y -> GetPassDataSale.read(x, y) },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Yalnız damga kartında: kartta şu an kaç damga var (`count`) ve bir ödül kaç damga ister (`max`). Hazır ödül sayısı `floor(count / max)`, sıradaki ödüle doğru damga `count % max`; program ödülden sonra damga biriktiriyorsa `count` `max`'ı aşabilir. */
+public class GetPassDataStamps(
+    /** Always present. */
+    public val count: Int,
+    /** Always present. */
+    public val max: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetPassDataStamps {
+            val o = ObjectReader(v, path)
+            return GetPassDataStamps(
+                count = o.int("count"),
+                max = o.int("max"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Yalnız cashback ve hediye kartında: harcanabilir bakiye, kuruş, ve para birimi. Online bir siparişe ayrılan tutar düşülmüştür. */
+public class GetPassDataMoney(
+    /** Always present. */
+    public val amountMinor: Long,
+    /** Always present. */
+    public val currency: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetPassDataMoney {
+            val o = ObjectReader(v, path)
+            return GetPassDataMoney(
+                amountMinor = o.long("amountMinor"),
+                currency = o.str("currency"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Yalnız kimlik `customers.read` taşıyorsa (kartın programında): kartın müşterisi. null: kartın müşterisi yok, ya da müşteri kimliğin şube kapsamının dışında. Yetki yoksa alan gelmez. */
+public class GetPassDataCustomer(
+    /**
+     * Müşterinin adı; adı verilmemişse null
+     *
+     * Always present.
+     */
+    public val name: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetPassDataCustomer {
+            val o = ObjectReader(v, path)
+            return GetPassDataCustomer(
+                name = o.strOrNull("name"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `GetPassDataActionsItem` object. */
+public class GetPassDataActionsItem(
+    /**
+     * One of: `earn-stamps`, `redeem-stamps`, `earn-points`, `redeem-reward`, `visit`, `spend`, `accrue`, `use`, `load`, `spend-points`.
+     *
+     * Always present.
+     */
+    public val action: String,
+    /**
+     * İşleme özgü zorunlu alanlar; `action` ve `locationId` her işlemde gerekir
+     *
+     * Always present.
+     */
+    public val needs: List<String>,
+    /**
+     * Kartın durumuna göre işlem şimdi yapılabilir mi (ör. damga ödülü hazır mı, bakiye var mı, kupon kullanılmamış mı). Şube kuralı burada değil: `GET /v1/passes/{serial}/till`; yetkiler de değil
+     *
+     * Always present.
+     */
+    public val ready: Boolean,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetPassDataActionsItem {
+            val o = ObjectReader(v, path)
+            return GetPassDataActionsItem(
+                action = o.str("action"),
+                needs = o.req("needs") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                ready = o.bool("ready"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `GetPassDataSale` object. */
+public class GetPassDataSale(
+    /**
+     * Bir satışın (`POST /v1/passes/{serial}/sale`) bu türde yazdığı: damga, puan, ziyaret, cashback ya da hiçbir şey
+     *
+     * One of: `stamps`, `points`, `visit`, `cashback`, `none`.
+     *
+     * Always present.
+     */
+    public val writes: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetPassDataSale {
+            val o = ObjectReader(v, path)
+            return GetPassDataSale(
+                writes = o.str("writes"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -292,11 +479,14 @@ public class PassActionBody(
     public var amountMinor: Int? = null,
     /** `rewardIndex`. */
     public var rewardIndex: Int? = null,
+    /** İsteğe bağlı: tutarın para birimi (ISO 4217, ör. `TRY`, `EUR`, büyük-küçük harf önemsiz). Tutar **kartın para birimindedir** (programın para birimi: `GET /v1/passes/{serial}` → `currency`, `GET /v1/programs/{id}`); verilirse onunla karşılaştırılır, farklıysa `422 CURRENCY_MISMATCH` (`details.currency` kartınki) ve hiçbir şey yazılmaz. Tutar çevrilmez. */
+    public var currency: String? = null,
 ) : RewloyObject() {
     /** The required fields only; set the rest with the setters. */
     public constructor(action: String, locationId: String) : this(
         action,
         locationId,
+        null,
         null,
         null,
         null,
@@ -311,6 +501,7 @@ public class PassActionBody(
         w.int("points", this.points)
         w.int("amountMinor", this.amountMinor)
         w.int("rewardIndex", this.rewardIndex)
+        w.str("currency", this.currency)
         return w.finish(extras())
     }
 }
@@ -355,6 +546,195 @@ public class PassActionDataPromotion(
                 id = o.str("id"),
                 name = o.str("name"),
                 factor = o.int("factor"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `RecordSaleBody` object. */
+public class RecordSaleBody(
+    /**
+     * Ödenen toplam, kartın (programın) para biriminde, kuruş
+     *
+     * Required.
+     */
+    public var amountMinor: Int,
+    /** Satışın yapıldığı şube. Verilmezse (online) satış bir şubeye yazılmaz; kimliğin her şubede `scan.use` yetkisi olmalıdır. */
+    public var locationId: String? = null,
+    /** Fiş ya da sipariş numarası; defter kaydının notuna yazılır */
+    public var reference: String? = null,
+    /** İsteğe bağlı: tutarın para birimi (ISO 4217, ör. `TRY`, `EUR`, büyük-küçük harf önemsiz). Tutar **kartın para birimindedir** (programın para birimi: `GET /v1/passes/{serial}` → `currency`, `GET /v1/programs/{id}`); verilirse onunla karşılaştırılır, farklıysa `422 CURRENCY_MISMATCH` (`details.currency` kartınki) ve hiçbir şey yazılmaz. Tutar çevrilmez. */
+    public var currency: String? = null,
+) : RewloyObject() {
+    /** The required fields only; set the rest with the setters. */
+    public constructor(amountMinor: Int) : this(
+        amountMinor,
+        null,
+        null,
+        null,
+    )
+
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.str("locationId", this.locationId)
+        w.int("amountMinor", this.amountMinor)
+        w.str("reference", this.reference)
+        w.str("currency", this.currency)
+        return w.finish(extras())
+    }
+}
+
+/** The `RecordSaleData` object. */
+public class RecordSaleData(
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+    /**
+     * One of: `stamps`, `points`, `visit`, `cashback`, `none`.
+     *
+     * Always present.
+     */
+    public val applied: String,
+    /**
+     * Yazılan: damga, puan, ziyaret ya da kuruş; hiçbir şey yazılmadıysa 0. Tekrarda ilk isteğin yazdığı
+     *
+     * Always present.
+     */
+    public val credited: Long,
+    /**
+     * Yalnız `applied: "none"` iken: neden hiçbir şey yazılmadı
+     *
+     * One of: `below_minimum`, `visit_already_counted`, `card_full`, `type_does_not_earn`.
+     */
+    public val reason: String?,
+    /**
+     * Satıştan sonra kartın bakiyesi (damga, puan, ziyaret ya da kuruş); kupon ve indirimde null
+     *
+     * Always present.
+     */
+    public val balance: Double?,
+    /** Always present. */
+    public val duplicate: Boolean,
+    /** Damga: ödül hazır oldu · VIP: seviye */
+    public val detail: String?,
+    /** Bu kazanımı katlayan kasa kampanyası (ADR 139) */
+    public val promotion: RecordSaleDataPromotion?,
+    /** Always present. */
+    public val rewardReady: Boolean,
+    /** Always present. */
+    public val rewardsReady: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): RecordSaleData {
+            val o = ObjectReader(v, path)
+            return RecordSaleData(
+                type = o.str("type"),
+                applied = o.str("applied"),
+                credited = o.long("credited"),
+                reason = o.strOrNull("reason"),
+                balance = o.doubleOrNull("balance"),
+                duplicate = o.bool("duplicate"),
+                detail = o.strOrNull("detail"),
+                promotion = o.opt("promotion") { x, y -> RecordSaleDataPromotion.read(x, y) },
+                rewardReady = o.bool("rewardReady"),
+                rewardsReady = o.int("rewardsReady"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Bu kazanımı katlayan kasa kampanyası (ADR 139) */
+public class RecordSaleDataPromotion(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+    /** Always present. */
+    public val factor: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): RecordSaleDataPromotion {
+            val o = ObjectReader(v, path)
+            return RecordSaleDataPromotion(
+                id = o.str("id"),
+                name = o.str("name"),
+                factor = o.int("factor"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `ReverseSaleBody` object. */
+public class ReverseSaleBody(
+    /** Satışın `Idempotency-Key`'i (aynı kimlikle gönderilmiş) */
+    public var saleKey: String? = null,
+    /** Satışın `reference`'ı; bu kartta tek bir satışta olmalı */
+    public var reference: String? = null,
+    /** Geri almanın yapıldığı şube (isteğe bağlı) */
+    public var locationId: String? = null,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.str("saleKey", this.saleKey)
+        w.str("reference", this.reference)
+        w.str("locationId", this.locationId)
+        return w.finish(extras())
+    }
+}
+
+/** The `ReverseSaleData` object. */
+public class ReverseSaleData(
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+    /**
+     * Geri alınan satışın yazdığı
+     *
+     * One of: `stamps`, `points`, `visit`, `cashback`.
+     *
+     * Always present.
+     */
+    public val applied: String,
+    /**
+     * Geri alınan: satışın yazdığı damga, puan, ziyaret ya da kuruş
+     *
+     * Always present.
+     */
+    public val reversed: Long,
+    /**
+     * Geri almadan sonra kartın bakiyesi
+     *
+     * Always present.
+     */
+    public val balance: Double,
+    /**
+     * true: satış daha önce geri alınmıştı; şimdi hiçbir şey yazılmadı
+     *
+     * Always present.
+     */
+    public val duplicate: Boolean,
+    /** Always present. */
+    public val rewardReady: Boolean,
+    /** Always present. */
+    public val rewardsReady: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ReverseSaleData {
+            val o = ObjectReader(v, path)
+            return ReverseSaleData(
+                type = o.str("type"),
+                applied = o.str("applied"),
+                reversed = o.long("reversed"),
+                balance = o.double("balance"),
+                duplicate = o.bool("duplicate"),
+                rewardReady = o.bool("rewardReady"),
+                rewardsReady = o.int("rewardsReady"),
             ).also { it.adopt(o.rest()) }
         }
     }

@@ -34,7 +34,7 @@ public object ErrorCode {
     /** Onay gerekli */
     public const val CONFIRM_REQUIRED: String = "CONFIRM_REQUIRED"
 
-    /** `REASON_REQUIRED` */
+    /** Gerekçe gerekli */
     public const val REASON_REQUIRED: String = "REASON_REQUIRED"
 
     /** Bulunamadı */
@@ -67,7 +67,7 @@ public object ErrorCode {
     /** Passkey doğrulanamadı */
     public const val PASSKEY_REFUSED: String = "PASSKEY_REFUSED"
 
-    /** Giriş kodu yanlış */
+    /** Kod yanlış ya da geçersiz */
     public const val CODE_INVALID: String = "CODE_INVALID"
 
     /** Bu adres ya da numara için kod girişi kapandı */
@@ -163,7 +163,7 @@ public object ErrorCode {
     /** Yetki yok */
     public const val FORBIDDEN: String = "FORBIDDEN"
 
-    /** Bu şube kapsamınız dışında */
+    /** Bu şube ya da program kapsamınız dışında */
     public const val OUT_OF_SCOPE: String = "OUT_OF_SCOPE"
 
     /** Planınızda yok */
@@ -247,6 +247,69 @@ public object ErrorCode {
     /** Bekleyen bağlantı kodu bulunamadı */
     public const val CONNECT_TOKEN_NOT_FOUND: String = "CONNECT_TOKEN_NOT_FOUND"
 
+    /** Bağlantının eklenti anahtarı yok */
+    public const val NO_PLUGIN_KEY: String = "NO_PLUGIN_KEY"
+
+    /** Kodun süresi doldu */
+    public const val CODE_EXPIRED: String = "CODE_EXPIRED"
+
+    /** Kod başka yerde kullanıldı */
+    public const val CODE_USED: String = "CODE_USED"
+
+    /** Davet için giriş gerekli */
+    public const val INVITE_SIGN_IN: String = "INVITE_SIGN_IN"
+
+    /** Davet başka bir adrese */
+    public const val INVITE_OTHER_ACCOUNT: String = "INVITE_OTHER_ACCOUNT"
+
+    /** Kodun bu siparişteki ayırması sona erdi */
+    public const val CODE_RELEASED: String = "CODE_RELEASED"
+
+    /** Bu kart bu mağazada kullanılmıyor */
+    public const val CODE_NOT_ACCEPTED_HERE: String = "CODE_NOT_ACCEPTED_HERE"
+
+    /** Para birimi farklı */
+    public const val CURRENCY_MISMATCH: String = "CURRENCY_MISMATCH"
+
+    /** Bağlantı kapalı */
+    public const val SHOP_PAUSED: String = "SHOP_PAUSED"
+
+    /** Kupon yalnız mağazada geçer */
+    public const val VOUCHER_NOT_ONLINE: String = "VOUCHER_NOT_ONLINE"
+
+    /** Kart online kullanılamıyor */
+    public const val NOT_ONLINE: String = "NOT_ONLINE"
+
+    /** Açık kod sınırı */
+    public const val TOO_MANY_CODES: String = "TOO_MANY_CODES"
+
+    /** Kod bir siparişe bağlandı */
+    public const val CODE_ATTACHED: String = "CODE_ATTACHED"
+
+    /** Kod bulunamadı */
+    public const val CODE_NOT_FOUND: String = "CODE_NOT_FOUND"
+
+    /** Kart bu siparişte zaten var */
+    public const val CARD_IN_ORDER: String = "CARD_IN_ORDER"
+
+    /** Siparişteki kod sınırı */
+    public const val ORDER_CODES_LIMIT: String = "ORDER_CODES_LIMIT"
+
+    /** Ayırma karşılıksız kaldı */
+    public const val HOLD_UNBACKED: String = "HOLD_UNBACKED"
+
+    /** Kod kullanımı bulunamadı */
+    public const val REDEMPTION_NOT_FOUND: String = "REDEMPTION_NOT_FOUND"
+
+    /** İade tutarı fazla */
+    public const val REFUND_TOO_LARGE: String = "REFUND_TOO_LARGE"
+
+    /** İade edilecek bakiye yok */
+    public const val NOT_REFUNDABLE: String = "NOT_REFUNDABLE"
+
+    /** Ayrılmış değil */
+    public const val NOT_HELD: String = "NOT_HELD"
+
     /** Destek talebi bulunamadı */
     public const val TICKET_NOT_FOUND: String = "TICKET_NOT_FOUND"
 
@@ -279,6 +342,18 @@ public object ErrorCode {
 
     /** Ödül henüz hazır değil */
     public const val REWARD_NOT_READY: String = "REWARD_NOT_READY"
+
+    /** İşletme sahibinin e-postası doğrulanmadı */
+    public const val OWNER_EMAIL_UNVERIFIED: String = "OWNER_EMAIL_UNVERIFIED"
+
+    /** Geri alınacak satış yok */
+    public const val SALE_NOT_FOUND: String = "SALE_NOT_FOUND"
+
+    /** Bu notla birden çok satış var */
+    public const val SALE_AMBIGUOUS: String = "SALE_AMBIGUOUS"
+
+    /** Satışın kazandırdığı kullanılmış */
+    public const val SALE_ALREADY_SPENT: String = "SALE_ALREADY_SPENT"
 
     /** Kart bu şubede geçerli değil */
     public const val WRONG_LOCATION: String = "WRONG_LOCATION"
@@ -552,6 +627,27 @@ public object ErrorCode {
         "SHOP_PROGRAM_MISMATCH",
         "CONNECT_TOKEN_INVALID",
         "CONNECT_TOKEN_NOT_FOUND",
+        "NO_PLUGIN_KEY",
+        "CODE_EXPIRED",
+        "CODE_USED",
+        "INVITE_SIGN_IN",
+        "INVITE_OTHER_ACCOUNT",
+        "CODE_RELEASED",
+        "CODE_NOT_ACCEPTED_HERE",
+        "CURRENCY_MISMATCH",
+        "SHOP_PAUSED",
+        "VOUCHER_NOT_ONLINE",
+        "NOT_ONLINE",
+        "TOO_MANY_CODES",
+        "CODE_ATTACHED",
+        "CODE_NOT_FOUND",
+        "CARD_IN_ORDER",
+        "ORDER_CODES_LIMIT",
+        "HOLD_UNBACKED",
+        "REDEMPTION_NOT_FOUND",
+        "REFUND_TOO_LARGE",
+        "NOT_REFUNDABLE",
+        "NOT_HELD",
         "TICKET_NOT_FOUND",
         "NOTIFICATION_NOT_FOUND",
         "EXPORT_NOT_FOUND",
@@ -563,6 +659,10 @@ public object ErrorCode {
         "WRONG_CARD_TYPE",
         "INSUFFICIENT_BALANCE",
         "REWARD_NOT_READY",
+        "OWNER_EMAIL_UNVERIFIED",
+        "SALE_NOT_FOUND",
+        "SALE_AMBIGUOUS",
+        "SALE_ALREADY_SPENT",
         "WRONG_LOCATION",
         "INVALID_PROMOTION",
         "PROMOTION_NOT_FOUND",
@@ -636,6 +736,7 @@ public object ErrorCode {
         "IDEMPOTENCY_KEY_REUSED" to "Anahtar başka bir istekte kullanılmış",
         "IDEMPOTENCY_IN_PROGRESS" to "Aynı istek hâlâ işleniyor",
         "CONFIRM_REQUIRED" to "Onay gerekli",
+        "REASON_REQUIRED" to "Gerekçe gerekli",
         "NOT_FOUND" to "Bulunamadı",
         "RATE_LIMITED" to "İstek sınırı aşıldı",
         "INTERNAL" to "Beklenmeyen hata",
@@ -644,7 +745,7 @@ public object ErrorCode {
         "TOKEN_INVALID" to "Oturum ya da bağlantı geçersiz",
         "FLOW_EXPIRED" to "Bu adımın süresi doldu",
         "PASSKEY_REFUSED" to "Passkey doğrulanamadı",
-        "CODE_INVALID" to "Giriş kodu yanlış",
+        "CODE_INVALID" to "Kod yanlış ya da geçersiz",
         "CODE_LOCKED" to "Bu adres ya da numara için kod girişi kapandı",
         "PHONE_BUSY" to "Bu yoldan kod gönderimi bugün için dolu",
         "LAST_WAY_IN" to "Hesaba girmenin son yolu",
@@ -668,7 +769,7 @@ public object ErrorCode {
         "CREDENTIAL_NOT_ALLOWED" to "Bu kimlik türü bu uç noktayı kullanamaz",
         "MERCHANT_REQUIRED" to "Hangi işletme?",
         "FORBIDDEN" to "Yetki yok",
-        "OUT_OF_SCOPE" to "Bu şube kapsamınız dışında",
+        "OUT_OF_SCOPE" to "Bu şube ya da program kapsamınız dışında",
         "PLAN_FEATURE_MISSING" to "Planınızda yok",
         "READ_ONLY" to "Hesap salt-okunur",
         "SEAT_LIMIT" to "Koltuk sınırı doldu",
@@ -694,6 +795,27 @@ public object ErrorCode {
         "SHOP_PROGRAM_MISMATCH" to "Bağlantı bu programın değil",
         "CONNECT_TOKEN_INVALID" to "Bağlantı kodu geçersiz",
         "CONNECT_TOKEN_NOT_FOUND" to "Bekleyen bağlantı kodu bulunamadı",
+        "NO_PLUGIN_KEY" to "Bağlantının eklenti anahtarı yok",
+        "CODE_EXPIRED" to "Kodun süresi doldu",
+        "CODE_USED" to "Kod başka yerde kullanıldı",
+        "INVITE_SIGN_IN" to "Davet için giriş gerekli",
+        "INVITE_OTHER_ACCOUNT" to "Davet başka bir adrese",
+        "CODE_RELEASED" to "Kodun bu siparişteki ayırması sona erdi",
+        "CODE_NOT_ACCEPTED_HERE" to "Bu kart bu mağazada kullanılmıyor",
+        "CURRENCY_MISMATCH" to "Para birimi farklı",
+        "SHOP_PAUSED" to "Bağlantı kapalı",
+        "VOUCHER_NOT_ONLINE" to "Kupon yalnız mağazada geçer",
+        "NOT_ONLINE" to "Kart online kullanılamıyor",
+        "TOO_MANY_CODES" to "Açık kod sınırı",
+        "CODE_ATTACHED" to "Kod bir siparişe bağlandı",
+        "CODE_NOT_FOUND" to "Kod bulunamadı",
+        "CARD_IN_ORDER" to "Kart bu siparişte zaten var",
+        "ORDER_CODES_LIMIT" to "Siparişteki kod sınırı",
+        "HOLD_UNBACKED" to "Ayırma karşılıksız kaldı",
+        "REDEMPTION_NOT_FOUND" to "Kod kullanımı bulunamadı",
+        "REFUND_TOO_LARGE" to "İade tutarı fazla",
+        "NOT_REFUNDABLE" to "İade edilecek bakiye yok",
+        "NOT_HELD" to "Ayrılmış değil",
         "TICKET_NOT_FOUND" to "Destek talebi bulunamadı",
         "NOTIFICATION_NOT_FOUND" to "Bildirim bulunamadı",
         "SESSION_NOT_FOUND" to "Oturum bulunamadı",
@@ -704,6 +826,10 @@ public object ErrorCode {
         "WRONG_CARD_TYPE" to "Bu işlem bu kart türünde yok",
         "INSUFFICIENT_BALANCE" to "Bakiye yetersiz",
         "REWARD_NOT_READY" to "Ödül henüz hazır değil",
+        "OWNER_EMAIL_UNVERIFIED" to "İşletme sahibinin e-postası doğrulanmadı",
+        "SALE_NOT_FOUND" to "Geri alınacak satış yok",
+        "SALE_AMBIGUOUS" to "Bu notla birden çok satış var",
+        "SALE_ALREADY_SPENT" to "Satışın kazandırdığı kullanılmış",
         "WRONG_LOCATION" to "Kart bu şubede geçerli değil",
         "INVALID_PROMOTION" to "Kasa kampanyası geçersiz",
         "PROMOTION_NOT_FOUND" to "Kasa kampanyası bulunamadı",

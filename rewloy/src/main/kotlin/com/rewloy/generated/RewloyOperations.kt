@@ -38,6 +38,20 @@ public object RewloyOperations {
         true, IdempotencyMode.REQUIRED, true, ResponseKind.JSON, false, null,
     )
 
+    /** `POST /v1/passes/{serial}/sale`: Satışı karta yaz */
+    @JvmField
+    public val recordSale: OperationInfo = OperationInfo(
+        "recordSale", "POST", "/v1/passes/{serial}/sale", setOf(CredentialKind.KEY, CredentialKind.STAFF),
+        true, IdempotencyMode.REQUIRED, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `POST /v1/passes/{serial}/sale/reverse`: Satışı geri al */
+    @JvmField
+    public val reverseSale: OperationInfo = OperationInfo(
+        "reverseSale", "POST", "/v1/passes/{serial}/sale/reverse", setOf(CredentialKind.KEY, CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+    )
+
     /** `GET /v1/public/programs/{id}`: Katılım formu */
     @JvmField
     public val publicProgram: OperationInfo = OperationInfo(
@@ -71,6 +85,13 @@ public object RewloyOperations {
     public val emailCardLink: OperationInfo = OperationInfo(
         "emailCardLink", "POST", "/v1/public/cards/{serial}/email-link", setOf(CredentialKind.PUBLIC, CredentialKind.HOLDER, CredentialKind.STAFF, CredentialKind.KEY),
         true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `GET /v1/meta`: Sürüm */
+    @JvmField
+    public val getMeta: OperationInfo = OperationInfo(
+        "getMeta", "GET", "/v1/meta", setOf(CredentialKind.PUBLIC, CredentialKind.KEY, CredentialKind.STAFF, CredentialKind.HOLDER),
+        true, IdempotencyMode.NONE, false, ResponseKind.JSON, false, null,
     )
 
     /** `GET /v1/openapi.json`: OpenAPI 3.1 belgesi */
@@ -112,7 +133,7 @@ public object RewloyOperations {
     @JvmField
     public val holderLogin: OperationInfo = OperationInfo(
         "holderLogin", "POST", "/v1/holder/login", setOf(CredentialKind.PUBLIC),
-        false, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+        false, IdempotencyMode.OPTIONAL, true, ResponseKind.JSON, false, null,
     )
 
     /** `POST /v1/holder/sessions`: Kodla kart sahibi oturumu aç */
@@ -209,8 +230,8 @@ public object RewloyOperations {
     /** `POST /v1/auth/invites/{code}/accept`: Daveti kabul et */
     @JvmField
     public val acceptInvite: OperationInfo = OperationInfo(
-        "acceptInvite", "POST", "/v1/auth/invites/{code}/accept", setOf(CredentialKind.PUBLIC),
-        false, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+        "acceptInvite", "POST", "/v1/auth/invites/{code}/accept", setOf(CredentialKind.PUBLIC, CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
     )
 
     /** `POST /v1/me/password`: Şifreyi değiştir */
@@ -1018,6 +1039,111 @@ public object RewloyOperations {
         false, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
     )
 
+    /** `PUT /v1/shops/{id}/plugin-abilities`: Eklentinin yetkilerini değiştir */
+    @JvmField
+    public val setShopPluginAbilities: OperationInfo = OperationInfo(
+        "setShopPluginAbilities", "PUT", "/v1/shops/{id}/plugin-abilities", setOf(CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `POST /v1/shops/{id}/checkout-codes/quote`: Ödeme adımındaki kodu sor */
+    @JvmField
+    public val quoteCheckoutCode: OperationInfo = OperationInfo(
+        "quoteCheckoutCode", "POST", "/v1/shops/{id}/checkout-codes/quote", setOf(CredentialKind.KEY, CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `GET /v1/shops/{id}/orders/{orderId}/redemptions`: Siparişin kod kullanımları */
+    @JvmField
+    public val listOrderRedemptions: OperationInfo = OperationInfo(
+        "listOrderRedemptions", "GET", "/v1/shops/{id}/orders/{orderId}/redemptions", setOf(CredentialKind.KEY, CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, false, ResponseKind.JSON, false, null,
+    )
+
+    /** `POST /v1/shops/{id}/orders/{orderId}/redemptions`: Siparişe kodu bağla ve değeri ayır */
+    @JvmField
+    public val holdCheckoutCode: OperationInfo = OperationInfo(
+        "holdCheckoutCode", "POST", "/v1/shops/{id}/orders/{orderId}/redemptions", setOf(CredentialKind.KEY, CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `POST /v1/shops/{id}/orders/{orderId}/capture`: Ödenen siparişin ayırmasını düş */
+    @JvmField
+    public val captureCheckoutOrder: OperationInfo = OperationInfo(
+        "captureCheckoutOrder", "POST", "/v1/shops/{id}/orders/{orderId}/capture", setOf(CredentialKind.KEY, CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `POST /v1/shops/{id}/orders/{orderId}/release`: Siparişin ayırmasını bırak */
+    @JvmField
+    public val releaseCheckoutOrder: OperationInfo = OperationInfo(
+        "releaseCheckoutOrder", "POST", "/v1/shops/{id}/orders/{orderId}/release", setOf(CredentialKind.KEY, CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `POST /v1/shops/{id}/orders/{orderId}/refund`: İade edilen siparişin tutarını karta geri yükle */
+    @JvmField
+    public val refundCheckoutOrder: OperationInfo = OperationInfo(
+        "refundCheckoutOrder", "POST", "/v1/shops/{id}/orders/{orderId}/refund", setOf(CredentialKind.KEY, CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `GET /v1/shops/{id}/redemptions`: Bağlantının kod kullanımları */
+    @JvmField
+    public val listShopRedemptions: OperationInfo = OperationInfo(
+        "listShopRedemptions", "GET", "/v1/shops/{id}/redemptions", setOf(CredentialKind.KEY, CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, false, ResponseKind.JSON, true, null,
+    )
+
+    /** `POST /v1/shops/{id}/redemptions/{redemptionId}/release`: Ayrılmış tutarı elle bırak */
+    @JvmField
+    public val releaseShopRedemption: OperationInfo = OperationInfo(
+        "releaseShopRedemption", "POST", "/v1/shops/{id}/redemptions/{redemptionId}/release", setOf(CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `POST /v1/shops/{id}/redemptions/{redemptionId}/refund`: Elle iade */
+    @JvmField
+    public val refundShopRedemption: OperationInfo = OperationInfo(
+        "refundShopRedemption", "POST", "/v1/shops/{id}/redemptions/{redemptionId}/refund", setOf(CredentialKind.STAFF),
+        true, IdempotencyMode.REQUIRED, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `PATCH /v1/shops/{id}/settings`: Ödeme adımı ayarları */
+    @JvmField
+    public val setShopSettings: OperationInfo = OperationInfo(
+        "setShopSettings", "PATCH", "/v1/shops/{id}/settings", setOf(CredentialKind.KEY, CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `PUT /v1/shops/{id}/ceiling`: Eklentinin anahtarının kabul edebileceği programlar (tavan) */
+    @JvmField
+    public val setShopCeiling: OperationInfo = OperationInfo(
+        "setShopCeiling", "PUT", "/v1/shops/{id}/ceiling", setOf(CredentialKind.STAFF),
+        true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `GET /v1/holder/cards/{serial}/checkout-codes`: Online alışveriş kodları */
+    @JvmField
+    public val holderCheckoutCodes: OperationInfo = OperationInfo(
+        "holderCheckoutCodes", "GET", "/v1/holder/cards/{serial}/checkout-codes", setOf(CredentialKind.HOLDER),
+        false, IdempotencyMode.NONE, false, ResponseKind.JSON, false, null,
+    )
+
+    /** `POST /v1/holder/cards/{serial}/checkout-codes`: Online alışveriş kodu oluştur */
+    @JvmField
+    public val mintHolderCheckoutCode: OperationInfo = OperationInfo(
+        "mintHolderCheckoutCode", "POST", "/v1/holder/cards/{serial}/checkout-codes", setOf(CredentialKind.HOLDER),
+        false, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+    )
+
+    /** `DELETE /v1/holder/cards/{serial}/checkout-codes/{id}`: Kodu iptal et */
+    @JvmField
+    public val cancelHolderCheckoutCode: OperationInfo = OperationInfo(
+        "cancelHolderCheckoutCode", "DELETE", "/v1/holder/cards/{serial}/checkout-codes/{id}", setOf(CredentialKind.HOLDER),
+        false, IdempotencyMode.NONE, false, ResponseKind.NONE, false, null,
+    )
+
     /** `GET /v1/team`: Ekip */
     @JvmField
     public val listTeam: OperationInfo = OperationInfo(
@@ -1140,42 +1266,42 @@ public object RewloyOperations {
     /** `GET /v1/developers/webhooks`: Webhook'lar */
     @JvmField
     public val listWebhooks: OperationInfo = OperationInfo(
-        "listWebhooks", "GET", "/v1/developers/webhooks", setOf(CredentialKind.STAFF),
+        "listWebhooks", "GET", "/v1/developers/webhooks", setOf(CredentialKind.STAFF, CredentialKind.KEY),
         true, IdempotencyMode.NONE, false, ResponseKind.JSON, false, null,
     )
 
     /** `POST /v1/developers/webhooks`: Webhook ekle */
     @JvmField
     public val createWebhook: OperationInfo = OperationInfo(
-        "createWebhook", "POST", "/v1/developers/webhooks", setOf(CredentialKind.STAFF),
+        "createWebhook", "POST", "/v1/developers/webhooks", setOf(CredentialKind.STAFF, CredentialKind.KEY),
         true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
     )
 
     /** `GET /v1/developers/webhooks/{id}`: Bir webhook */
     @JvmField
     public val getWebhook: OperationInfo = OperationInfo(
-        "getWebhook", "GET", "/v1/developers/webhooks/{id}", setOf(CredentialKind.STAFF),
+        "getWebhook", "GET", "/v1/developers/webhooks/{id}", setOf(CredentialKind.STAFF, CredentialKind.KEY),
         true, IdempotencyMode.NONE, false, ResponseKind.JSON, false, null,
     )
 
     /** `PATCH /v1/developers/webhooks/{id}`: Aç ya da kapat */
     @JvmField
     public val setWebhookStatus: OperationInfo = OperationInfo(
-        "setWebhookStatus", "PATCH", "/v1/developers/webhooks/{id}", setOf(CredentialKind.STAFF),
+        "setWebhookStatus", "PATCH", "/v1/developers/webhooks/{id}", setOf(CredentialKind.STAFF, CredentialKind.KEY),
         true, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
     )
 
     /** `GET /v1/developers/webhooks/{id}/deliveries`: Teslimler */
     @JvmField
     public val listWebhookDeliveries: OperationInfo = OperationInfo(
-        "listWebhookDeliveries", "GET", "/v1/developers/webhooks/{id}/deliveries", setOf(CredentialKind.STAFF),
+        "listWebhookDeliveries", "GET", "/v1/developers/webhooks/{id}/deliveries", setOf(CredentialKind.STAFF, CredentialKind.KEY),
         true, IdempotencyMode.NONE, false, ResponseKind.JSON, true, null,
     )
 
     /** `POST /v1/developers/webhooks/{id}/test`: Deneme olayı gönder */
     @JvmField
     public val testWebhook: OperationInfo = OperationInfo(
-        "testWebhook", "POST", "/v1/developers/webhooks/{id}/test", setOf(CredentialKind.STAFF),
+        "testWebhook", "POST", "/v1/developers/webhooks/{id}/test", setOf(CredentialKind.STAFF, CredentialKind.KEY),
         true, IdempotencyMode.NONE, false, ResponseKind.JSON, false, null,
     )
 
@@ -1449,7 +1575,7 @@ public object RewloyOperations {
     @JvmField
     public val addHolderEmail: OperationInfo = OperationInfo(
         "addHolderEmail", "POST", "/v1/holder/identities/email", setOf(CredentialKind.HOLDER),
-        false, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+        false, IdempotencyMode.OPTIONAL, true, ResponseKind.JSON, false, null,
     )
 
     /** `POST /v1/holder/identities/email/verify`: E-posta ekle: kodu doğrula */
@@ -1463,7 +1589,7 @@ public object RewloyOperations {
     @JvmField
     public val addHolderPhone: OperationInfo = OperationInfo(
         "addHolderPhone", "POST", "/v1/holder/identities/phone", setOf(CredentialKind.HOLDER),
-        false, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+        false, IdempotencyMode.OPTIONAL, true, ResponseKind.JSON, false, null,
     )
 
     /** `POST /v1/holder/identities/phone/verify`: Telefon ekle: kodu doğrula */
@@ -1491,7 +1617,7 @@ public object RewloyOperations {
     @JvmField
     public val replaceHolderIdentity: OperationInfo = OperationInfo(
         "replaceHolderIdentity", "POST", "/v1/holder/identities/{id}/replace", setOf(CredentialKind.HOLDER),
-        false, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+        false, IdempotencyMode.OPTIONAL, true, ResponseKind.JSON, false, null,
     )
 
     /** `POST /v1/holder/identities/{id}/replace/verify`: E-postayı ya da numarayı değiştir: kodu doğrula */
@@ -1652,7 +1778,7 @@ public object RewloyOperations {
     @JvmField
     public val startHolderRecovery: OperationInfo = OperationInfo(
         "startHolderRecovery", "POST", "/v1/holder/recovery", setOf(CredentialKind.PUBLIC),
-        false, IdempotencyMode.NONE, true, ResponseKind.JSON, false, null,
+        false, IdempotencyMode.OPTIONAL, true, ResponseKind.JSON, false, null,
     )
 
     /** `POST /v1/holder/recovery/verify`: Hesap kurtarma talebi: kodu doğrula, talebi kaydet */
@@ -1676,11 +1802,14 @@ public object RewloyOperations {
         "getPass" to getPass,
         "getPassTill" to getPassTill,
         "passAction" to passAction,
+        "recordSale" to recordSale,
+        "reverseSale" to reverseSale,
         "publicProgram" to publicProgram,
         "joinProgram" to joinProgram,
         "publicCode" to publicCode,
         "claimCode" to claimCode,
         "emailCardLink" to emailCardLink,
+        "getMeta" to getMeta,
         "openapi" to openapi,
         "login" to login,
         "proveMfa" to proveMfa,
@@ -1816,6 +1945,21 @@ public object RewloyOperations {
         "createShopConnectToken" to createShopConnectToken,
         "revokeShopConnectToken" to revokeShopConnectToken,
         "connectShop" to connectShop,
+        "setShopPluginAbilities" to setShopPluginAbilities,
+        "quoteCheckoutCode" to quoteCheckoutCode,
+        "listOrderRedemptions" to listOrderRedemptions,
+        "holdCheckoutCode" to holdCheckoutCode,
+        "captureCheckoutOrder" to captureCheckoutOrder,
+        "releaseCheckoutOrder" to releaseCheckoutOrder,
+        "refundCheckoutOrder" to refundCheckoutOrder,
+        "listShopRedemptions" to listShopRedemptions,
+        "releaseShopRedemption" to releaseShopRedemption,
+        "refundShopRedemption" to refundShopRedemption,
+        "setShopSettings" to setShopSettings,
+        "setShopCeiling" to setShopCeiling,
+        "holderCheckoutCodes" to holderCheckoutCodes,
+        "mintHolderCheckoutCode" to mintHolderCheckoutCode,
+        "cancelHolderCheckoutCode" to cancelHolderCheckoutCode,
         "listTeam" to listTeam,
         "listRoles" to listRoles,
         "getMember" to getMember,
