@@ -58,10 +58,10 @@ repositories {
 }
 
 dependencies {
-    implementation("com.rewloy:rewloy:0.2.3")
+    implementation("com.rewloy:rewloy:0.2.4")
     // isteğe bağlı:
-    implementation("com.rewloy:rewloy-okhttp:0.2.3")      // OkHttp taşıyıcısı
-    implementation("com.rewloy:rewloy-coroutines:0.2.3")  // suspend ve Flow
+    implementation("com.rewloy:rewloy-okhttp:0.2.4")      // OkHttp taşıyıcısı
+    implementation("com.rewloy:rewloy-coroutines:0.2.4")  // suspend ve Flow
 }
 ```
 
@@ -77,7 +77,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.rewloy:rewloy:0.2.3'
+    implementation 'com.rewloy:rewloy:0.2.4'
 }
 ```
 
@@ -96,7 +96,7 @@ dependencies {
   <dependency>
     <groupId>com.rewloy</groupId>
     <artifactId>rewloy</artifactId>
-    <version>0.2.3</version>
+    <version>0.2.4</version>
   </dependency>
 </dependencies>
 ```
@@ -123,7 +123,9 @@ import com.rewloy.Rewloy
 val rewloy = Rewloy { apiKey(System.getenv("REWLOY_API_KEY")) }
 
 val kart = rewloy.getPass("ABCD-EFGH-JKLM")
-println("${kart.type} ${kart.balance} ${kart.rewardReady}")
+// "Şimdi ne yapılabilir?" için `actions[].ready` okunur; `rewardReady` yalnız damga ve puanda "ödül hazır"dır.
+val odul = kart.actions.any { (it.action == "redeem-stamps" || it.action == "redeem-reward") && it.ready }
+println("${kart.type} ${kart.balance} $odul")
 ```
 
 Java:
@@ -261,8 +263,16 @@ val satis = rewloy.recordSale(
 )
 if (satis.applied == "none") println("Yazılan bir şey yok: ${satis.reason}")
 else println("${satis.credited} ${satis.applied} yazıldı, bakiye ${satis.balance}")
-if (satis.rewardReady) println("Ödül hazır")
+// Fişi çizmek için ayrıca okumanız gerekmez: yazımdan sonraki kart `satis.card`'dadır (yetki yoksa null).
+if (satis.card?.actions?.any { (it.action == "redeem-stamps" || it.action == "redeem-reward") && it.ready } == true) println("Ödül hazır")
 ```
+
+`actions[].ready`, kartın kendi durumuna göre işlemin şimdi yapılıp
+yapılamayacağıdır (damga ödülü hazır mı, puan bir ödüle yetiyor mu, bakiye var
+mı, kupon kullanılmamış mı, VIP ziyareti bu pencerede sayılmış mı). `rewardReady`
+aynen kalır ama türe göre anlam değiştirir: damga ve puanda "ödül hazır";
+cashback ve hediye kartında bakiye sıfırdan büyükse; **VIP'te her zaman
+`true`**. Kasa ekranında "Ödül hazır" yazısını yalnız damga ve puanda gösterin.
 
 `GET /v1/passes/{serial}` ayrıca `actions` (kartın aldığı kasa işlemleri ve
 şimdi yapılıp yapılamayacakları) ve `sale` (bir satışın bu kartta ne
@@ -327,6 +337,43 @@ when (val sonuc = rewloy.passAction(seri, govde, RequestOptions(idempotencyKey =
 
 Kazanımlar (`earn-stamps`, `earn-points`, `visit`) `reverseAction`la değil
 `reverseSale`la geri alınır.
+
+**Yazımın yanıtında kartın durumu: `card`.** `recordSale`, `passAction`,
+`reverseSale` ve `reverseAction` yanıtları `card` taşır: yazımdan sonraki kart,
+`getPass`'in `customer` hariç aynı alanlarıyla (`programName`, `currency`,
+`stamps`/`points`/`money`, `actions`…). Yazımla aynı işlemde okunur, yanıtın
+`balance`'ıyla aynı anı söyler. **Tekrarda** (`duplicate == true`) kartın
+**şimdiki** durumudur. Kimliğin kartın programında `passes.read` yetkisi yoksa
+(yalnız kasa yetkisi olan bir eklenti anahtarı) `card` `null`dır. `recordSale`
+ve `passAction` yanıtındaki `reversed == true`, bu anahtarla yazılan işlemin
+sonradan geri alındığını söyler (yalnız bir tekrarda olabilir; `credited` ilk
+isteğin yazdığıdır, kart onu artık taşımaz): fişi yeniden yazmak için yeni bir
+anahtar gönderin. `passAction`ın mühürlü sınıfında `reversed` doğrudan okunur;
+`card` her şeklin kendisindedir (`PassActionDataOption1.card`,
+`PassActionDataOption2.card`). **0.2.4 Rewloy API 1.2.0'ı ve sonrasını okur:**
+`card` ve `reversed` zorunlu alanlardır, 1.1.x'e karşı bu çağrılar
+`INVALID_RESPONSE` atar.
+
+**Kartın işlemleri: `listPassOperations`.** Kartın defterindeki işlemler,
+yeniden eskiye, sayfalı (`listPassOperationsAll(seri)`): bir kasa ekranındaki
+"son işlemler" listesi ve her birinin İade düğmesi için; kasanın kendi anahtar
+günlüğünü tutması gerekmez. Her işlemde `undoWith` hangi uç noktanın geri
+aldığını (`"sale/reverse"` ya da `"actions/reverse"`), `reversible` bu kimliğin
+şimdi geri alıp alamayacağını söyler; bu kimliğin kendi işlemlerinde `saleKey`
+ya da `actionKey` de gelir.
+
+```kotlin
+for (islem in rewloy.listPassOperationsAll(seri)) {
+    if (!islem.reversible) continue
+    if (islem.undoWith == "sale/reverse") rewloy.reverseSale(seri, ReverseSaleBody(saleKey = islem.saleKey))
+    else rewloy.reverseAction(seri, ReverseActionBody(actionKey = islem.actionKey))
+}
+```
+
+**`occurredAt` reddedilirse** `400 VALIDATION` gelir ve `details` içindeki ilk
+kaydın `reason`'ı nedeni söyler: `in_future`, `too_old` (72 saatten eski),
+`before_issue` (kart o anda yoktu: `occurredAt` olmadan yeniden gönderin),
+`invalid`. Tanımadığınız bir `reason`'ı `invalid` gibi ele alın.
 
 ### `Idempotency-Key`
 
@@ -435,6 +482,21 @@ rewloy.testWebhook(yeni.webhook.id)   // webhook.test olayı gönderir
 
 Adres herkese açık bir `https` adresi olmalıdır (test ortamında da);
 yerelde bir tünel kullanın.
+
+**Sırrı yenilemek.** Kaybolan ya da sızan bir sır için `rotateWebhookSecret`
+webhook'a yeni bir sır verir (yeni `secret` yalnız o yanıtta döner); webhook'u
+silip yeniden eklemek gerekmez. Eski sır 24 saat daha yeninin yanında imzalar:
+o sürede `Rewloy-Signature` iki `v1` taşır ve teslimler
+`Rewloy-Signature-Rotating: 1` başlığıyla gelir. `Webhook.verify` her `v1`'i ve
+verilen birden çok sırrı dener; yenilemeden önce alıcınızı `listOf(yeni, eski)`
+ile güncelleyin. `deleteWebhook` webhook'u teslim geçmişiyle birlikte kalıcı
+siler (`204`).
+
+```kotlin
+val yeni = rewloy.rotateWebhookSecret(webhookId).secret
+// yeni sırrı alıcınıza ekleyin, 24 saat sonra eskisini bırakın
+val olay = Webhook.verify(hamGovde, imzaBasligi, listOf(yeni, eskiSir))
+```
 
 Tutmazsa `WebhookSignatureException` atar (`reason`: `MISSING`, `MALFORMED`,
 `EXPIRED`, `MISMATCH`, `PAYLOAD`): 400 ile yanıtlayın ve hiçbir işlem yapmayın.
@@ -577,6 +639,22 @@ println(rewloy.getPassWithResponse(seri).isTestMode)               // true
 - Webhook'lar teslim edilir ve `Rewloy-Test: 1` başlığıyla `"test": true`
   taşır.
 - Gerçek müşteri verisini test ortamına girmeyin.
+- `resetTestEnvironment` (1.2.0'dan beri) müşterileri, kartları, kodları ve
+  kayıtları siler; ortamın kimliği, programları, şubeleri, anahtarları ve
+  webhook'ları kalır, entegrasyonunuz aynı anahtarla sürer. Bir anahtar
+  sızdıysa `ResetTestEnvironmentBody(revokeKeys = true)` anahtarları da geçersiz
+  kılar ve webhook'ları kapatır. Yanıt `deleted` ve `kept` sayılarını verir;
+  `closed` artık hep `null`dır.
+- POS için anahtar: `createApiKey(CreateApiKeyBodyPos(kind = "pos", locationId = subeId, password = sifre, register = "Kasa 1"))`
+  hazır Kasa rolüyle yalnız o şubede çalışan bir anahtar oluşturur; yanıttaki
+  `baseUrl` POS'a yazılacak adrestir. Sıradan anahtar `CreateApiKeyBody` ile
+  oluşturulur; `createApiKey` ikisini de alır.
+- `listAllBatches` (`listAllBatchesAll`) işletmenin bütün hediye kartı, kupon ve
+  indirim kodlarını sayfalar (`status` süzgeci: `open`, `full`, `expired`,
+  `closed` ya da `archived`; satırın `state`'i de bunlardan biri: `archived`
+  kodun programı arşivde demektir, bağlantısı kart vermez). Arşivdeki bir
+  programa kod oluşturmak `409 PROGRAM_ARCHIVED` (`ErrorCode.PROGRAM_ARCHIVED`)
+  verir.
 
 Ayrıntı: https://rewloy.com/gelistiriciler#test-ortamı
 
@@ -591,7 +669,7 @@ sürümünde vardır, ek bağımlılık gerektirmez. Yönlendirmeleri izlemez.
 
 - **`PATCH`.** Android'in `HttpURLConnection`'ı `PATCH` gönderir. Masaüstü JDK'sı
   göndermez: Java 11'e kadar kütüphane bunu aşar; Java 12 ve üstünde `PATCH`
-  (API'nin 256 işleminden 12'si) `UnsupportedOperationException` atar ve
+  (API'nin 260 işleminden 12'si) `UnsupportedOperationException` atar ve
   `rewloy-okhttp`'a yönlendirir. Sunucu tarafında Java 12+ kullanıyorsanız
   OkHttp taşıyıcısını kullanın.
 - **OkHttp.** Uygulamanızda zaten bir `OkHttpClient` (kendi havuzu, vekil ve
@@ -641,7 +719,7 @@ dosyaları gönderir. Kurulumu ve kuralları dosyanın başında yazılıdır.
 1. Sürümü üç yerde yükseltin: `build.gradle.kts`, `RewloyVersion.CURRENT` ve
    CHANGELOG.md (bir test üçünün aynı olduğunu denetler).
 2. main'e gönderin ve CI'ın yeşil olmasını bekleyin.
-3. Etiketleyin: `git tag v0.2.3 && git push origin v0.2.3`.
+3. Etiketleyin: `git tag v0.2.4 && git push origin v0.2.4`.
 
 Yayımlanmış bir sürüm değiştirilemez; bir düzeltme yeni bir sürümdür. Etiket
 yalnız `vX.Y.Z` biçiminde olabilir (şimdilik ön sürüm yok) ve sürüm, yayımlanmış
@@ -734,9 +812,9 @@ repositories {
 }
 
 dependencies {
-    implementation("com.rewloy:rewloy:0.2.3")
-    implementation("com.rewloy:rewloy-okhttp:0.2.3")      // optional: an OkHttp transport
-    implementation("com.rewloy:rewloy-coroutines:0.2.3")  // optional: suspend and Flow
+    implementation("com.rewloy:rewloy:0.2.4")
+    implementation("com.rewloy:rewloy-okhttp:0.2.4")      // optional: an OkHttp transport
+    implementation("com.rewloy:rewloy-coroutines:0.2.4")  // optional: suspend and Flow
 }
 ```
 
@@ -752,7 +830,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.rewloy:rewloy:0.2.3'
+    implementation 'com.rewloy:rewloy:0.2.4'
 }
 ```
 
@@ -771,7 +849,7 @@ Maven, `pom.xml`:
   <dependency>
     <groupId>com.rewloy</groupId>
     <artifactId>rewloy</artifactId>
-    <version>0.2.3</version>
+    <version>0.2.4</version>
   </dependency>
 </dependencies>
 ```
@@ -838,6 +916,26 @@ RecordSaleData sale = rewloy.recordSale(serial, body, RequestOptions.builder().i
   balance-card answer, `balance`) or `PassActionDataOption2` (the coupon /
   discount-card answer, `status`, `uses`, `usesLeft`); `duplicate` is on the
   base, and a `when` over the two is exhaustive.
+- **`card` on write answers.** `recordSale`, `passAction`, `reverseSale` and
+  `reverseAction` answer with `card`: the card after the write, the fields of
+  `getPass` except `customer`, read in the same transaction (on a replay,
+  `duplicate == true`, it is the card's **current** state). A key without
+  `passes.read` in the card's programme gets `card == null`. `reversed == true`
+  on `recordSale` / `passAction` (replays only) says the sale written under that
+  key was taken back since: send a new key to write the receipt again.
+  `card` and `reversed` are required fields in 0.2.4: it reads Rewloy API 1.2.0
+  and later, and against 1.1.x those calls throw `INVALID_RESPONSE`. For "can I
+  act now" read `card.actions[].ready`; `rewardReady` means "reward ready" only
+  for stamp and points cards (always `true` on VIP, any balance on cashback and
+  gift cards).
+- **Recent operations.** `listPassOperations` (`listPassOperationsAll`) lists a
+  card's ledger operations, newest first and paged, for a till's "last
+  operations" screen: `undoWith` (`"sale/reverse"` or `"actions/reverse"`),
+  `reversible` and, for this credential's own operations, `saleKey` /
+  `actionKey` to pass straight to `reverseSale` / `reverseAction`.
+- **Rejected `occurredAt`** is a `400 VALIDATION` whose first `details` entry has
+  `reason`: `in_future`, `too_old`, `before_issue` or `invalid` (treat an unknown
+  reason as `invalid`).
 - **Idempotency keys.** `recordSale`, `passAction`, `sendCampaign` and
   `refundShopRedemption` need an `Idempotency-Key`: the API's OpenAPI document
   marks the header required for them, so `RequestOptions.idempotencyKey` is
@@ -895,6 +993,21 @@ val event = Webhook.verify(rawBody, request.header("Rewloy-Signature"), secret)
   same on every retry of a delivery: deduplicate on it. Delivery is at least
   once.
 
+`rotateWebhookSecret` gives a webhook a new secret (returned only in that
+answer); the old one keeps signing for 24 hours, so `Rewloy-Signature` carries
+two `v1` values and the delivery has `Rewloy-Signature-Rotating: 1`.
+`Webhook.verify` tries every `v1` and every secret you pass:
+`listOf(newSecret, oldSecret)`. `deleteWebhook` removes a webhook and its
+delivery history for good.
+
+Also in Rewloy 1.2.0 (library 0.2.4): `createApiKey(CreateApiKeyBodyPos(kind = "pos", locationId = …, password = …))`
+(a till key bound to one branch; the standard key is `CreateApiKeyBody`, and
+`createApiKey` takes either); `resetTestEnvironment(ResetTestEnvironmentBody(revokeKeys = true))`
+(keeps the test business, programmes and keys; revokes keys only when asked);
+`listAllBatches` (every gift-card, coupon and discount code of the business,
+with the `archived` state); `409 PROGRAM_ARCHIVED` when creating a code for an
+archived programme.
+
 ### Errors, retries, deprecations
 
 - **Errors.** Failures throw `RewloyException` (unchecked) with `status`,
@@ -914,7 +1027,7 @@ val event = Webhook.verify(rawBody, request.header("Rewloy-Signature"), secret)
 ### `PATCH` and the JDK
 
 Android's `HttpURLConnection` sends `PATCH`; the desktop JDK's does not (12 of
-the 256 operations are `PATCH`). Up to Java 11 the library works around it; from
+the 260 operations are `PATCH`). Up to Java 11 the library works around it; from
 Java 12 on, use the OkHttp transport (`com.rewloy:rewloy-okhttp`).
 
 ### Security and licence

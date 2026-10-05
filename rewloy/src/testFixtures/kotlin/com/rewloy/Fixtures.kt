@@ -10,7 +10,7 @@ object Fixtures {
     fun customers(from: Int, count: Int, page: Int, pageSize: Int, total: Int): String =
         """{"data":[${(from until from + count).joinToString(",") { customer(it) }}],"meta":{"page":$page,"pageSize":$pageSize,"total":$total}}"""
 
-    const val ACTION = """{"data":{"balance":5,"duplicate":false}}"""
+    const val ACTION = """{"data":{"balance":5,"duplicate":false,"reversed":false,"card":null}}"""
     const val RESTORED = """{"data":{"status":"active","cardsQueued":0}}"""
 }
 

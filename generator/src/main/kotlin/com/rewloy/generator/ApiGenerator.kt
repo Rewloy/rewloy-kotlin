@@ -267,6 +267,8 @@ object ApiGenerator {
         val queryRequired: Boolean,
         /** The code that reads `data` from `(v, p)`; for a paged list, the list of items. */
         val reader: String?,
+        /** The other body classes of a request that is a union of objects: one more overload of the operation each. */
+        val bodyAlternatives: List<String>,
     )
 
     private fun planOp(op: Op, model: ModelBuilder): Plan {
@@ -290,11 +292,14 @@ object ApiGenerator {
 
         var bodyType: String? = null
         var bodyRequired = false
+        var bodyAlternatives: List<String> = emptyList()
         op.body?.let { (schema, required) ->
             val mapped = model.map(schema, "${op.type}Body", request = true, "${op.id} body")
             if (mapped.type !is KType.Obj && mapped.type != KType.Json) throw GeneratorException("${op.id}: a request body that is not an object is not supported")
             bodyType = mapped.type.kotlin
-            val noRequired = schema is JsonObject && !(schema.prop("required") is JsonArray && (schema.prop("required") as JsonArray).items.isNotEmpty())
+            bodyAlternatives = (mapped.type as? KType.Obj)?.let { model.requestAlternatives[it.name] } ?: emptyList()
+            val shapes = if (bodyAlternatives.isNotEmpty() && schema is JsonObject) schema.prop("oneOf").items() else listOf(schema)
+            val noRequired = shapes.none { it is JsonObject && it.prop("required") is JsonArray && (it.prop("required") as JsonArray).items.isNotEmpty() }
             bodyRequired = required && !noRequired
         }
 
@@ -337,7 +342,7 @@ object ApiGenerator {
             }
         }
 
-        return Plan(args, pathExprs, queryType?.let { "query" }, bodyType?.let { "body" }, bodyType == "JsonValue", dataType, itemType, queryType, queryRequired, reader)
+        return Plan(args, pathExprs, queryType?.let { "query" }, bodyType?.let { "body" }, bodyType == "JsonValue", dataType, itemType, queryType, queryRequired, reader, bodyAlternatives)
     }
 
     // ------------------------------------------------------------------ files
@@ -598,6 +603,21 @@ object ApiGenerator {
             sb.append(doc(op.summary, true))
             sb.append(deprecation)
             sb.append("    @JvmOverloads\n    public fun ${op.id}WithResponse($signature): $respType =\n        $call\n")
+
+            // A body that is a union of objects: the same call for each of the other shapes.
+            val mainBody = plan.args.firstOrNull { it.name == "body" }?.type
+            for (alt in plan.bodyAlternatives) {
+                val altSignature = signature.replace("body: $mainBody", "body: $alt")
+                val altDoc = Naming.kdoc("    ", "${op.summary}, with the body shape [$alt].", listOf("`${op.method} ${op.path}`", "The same call as [${op.id}]; the body is the alternative shape [$alt] of [$mainBody]."), listOf("@param body The JSON body.", "@param options Per-call options: the idempotency key, the business (`Rewloy-Merchant`), the timeout, the retries, a cancel token."))
+                sb.append('\n').append(altDoc).append(deprecation)
+                sb.append("    @JvmOverloads\n")
+                when {
+                    op.response == "none" -> sb.append("    public fun ${op.id}($altSignature) {\n        ${op.id}WithResponse(${callArgs}options)\n    }\n")
+                    else -> sb.append("    public fun ${op.id}($altSignature): $plainType =\n        ${op.id}WithResponse(${callArgs}options).data\n")
+                }
+                sb.append('\n').append(altDoc).append(deprecation)
+                sb.append("    @JvmOverloads\n    public fun ${op.id}WithResponse($altSignature): $respType =\n        $call\n")
+            }
 
             if (op.paged) {
                 val q = plan.queryType!!

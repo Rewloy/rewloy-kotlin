@@ -198,9 +198,9 @@ class ClientTest {
     @Test
     fun `reverses a till action without an idempotency key and tells passAction's two answers apart`() = Rig { apiKey("rwk_abc") }.test { rig ->
         rig.server.enqueue(
-            Answer(200, """{"data":{"type":"giftcard","undone":"spend","restored":5000,"balance":5000,"uses":null,"usesLeft":null,"status":"active","reopened":false,"duplicate":false,"rewardReady":false,"rewardsReady":0}}"""),
-            Answer(200, """{"data":{"status":"active","duplicate":false,"uses":3,"usesLeft":2}}"""),
-            Answer(200, """{"data":{"balance":12,"duplicate":true,"promotion":{"id":"p","name":"2x","factor":2}}}"""),
+            Answer(200, """{"data":{"type":"giftcard","undone":"spend","restored":5000,"balance":5000,"uses":null,"usesLeft":null,"status":"active","reopened":false,"duplicate":false,"rewardReady":false,"rewardsReady":0,"card":null}}"""),
+            Answer(200, """{"data":{"status":"active","duplicate":false,"uses":3,"usesLeft":2,"reversed":false,"card":null}}"""),
+            Answer(200, """{"data":{"balance":12,"duplicate":true,"promotion":{"id":"p","name":"2x","factor":2},"reversed":false,"card":null}}"""),
         )
         val back = rig.rewloy.reverseAction("ABCD-EFGH-JKLM", ReverseActionBody(actionKey = "kasa3-z0187-fis0042", locationId = "l"))
         assertEquals("spend", back.undone)

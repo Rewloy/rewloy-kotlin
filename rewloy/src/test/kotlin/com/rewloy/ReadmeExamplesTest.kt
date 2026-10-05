@@ -54,8 +54,8 @@ class ReadmeExamplesTest {
         rig.server.script = { r, _ ->
             when (r.path) {
                 "/v1/passes/ABCD-EFGH-JKLM" -> Answer(200, Fixtures.PASS)
-                "/v1/passes/ABCD-EFGH-JKLM/sale" -> Answer(200, """{"data":{"type":"stamp","applied":"stamps","credited":1,"balance":4,"duplicate":false,"rewardReady":false,"rewardsReady":0}}""")
-                else -> Answer(200, """{"data":{"type":"stamp","applied":"stamps","reversed":1,"balance":3,"duplicate":false,"rewardReady":false,"rewardsReady":0}}""")
+                "/v1/passes/ABCD-EFGH-JKLM/sale" -> Answer(200, """{"data":{"type":"stamp","applied":"stamps","credited":1,"balance":4,"duplicate":false,"rewardReady":false,"rewardsReady":0,"reversed":false,"card":null}}""")
+                else -> Answer(200, """{"data":{"type":"stamp","applied":"stamps","reversed":1,"balance":3,"duplicate":false,"rewardReady":false,"rewardsReady":0,"card":null}}""")
             }
         }
         val seri = "ABCD-EFGH-JKLM"
@@ -94,9 +94,9 @@ class ReadmeExamplesTest {
         val rewloy = rig.rewloy
         rig.server.script = { r, _ ->
             when {
-                r.path.endsWith("/sale") -> Answer(200, """{"data":{"type":"stamp","applied":"stamps","credited":1,"balance":4,"duplicate":false,"rewardReady":false,"rewardsReady":0}}""")
-                r.path.endsWith("/actions/reverse") -> Answer(200, """{"data":{"type":"giftcard","undone":"spend","restored":2500,"balance":10000,"uses":null,"usesLeft":null,"status":"active","reopened":false,"duplicate":false,"rewardReady":false,"rewardsReady":0}}""")
-                else -> Answer(200, """{"data":{"balance":7500,"duplicate":false}}""")
+                r.path.endsWith("/sale") -> Answer(200, """{"data":{"type":"stamp","applied":"stamps","credited":1,"balance":4,"duplicate":false,"rewardReady":false,"rewardsReady":0,"reversed":false,"card":null}}""")
+                r.path.endsWith("/actions/reverse") -> Answer(200, """{"data":{"type":"giftcard","undone":"spend","restored":2500,"balance":10000,"uses":null,"usesLeft":null,"status":"active","reopened":false,"duplicate":false,"rewardReady":false,"rewardsReady":0,"card":null}}""")
+                else -> Answer(200, """{"data":{"balance":7500,"duplicate":false,"reversed":false,"card":null}}""")
             }
         }
         val seri = "ABCD-EFGH-JKLM"

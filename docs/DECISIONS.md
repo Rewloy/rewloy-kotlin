@@ -94,8 +94,15 @@ whole answer (14).
      type (`duplicate`), is an abstract property of the sealed class, so reading it
      needs no `when`. The reader picks the shape: of those whose required fields are
      all present (and whose `const` field matches), the one with the most known fields;
-     none matching is a `ResponseShapeException`. A union that is not all objects, or
-     the same in a request, stays a `JsonValue`. Before 0.2.2 these were `JsonValue`.
+     none matching is a `ResponseShapeException`. A union that is not all objects
+     stays a `JsonValue`. Before 0.2.2 these were `JsonValue`.
+   - **A request body that is a union of objects** (0.2.4: `createApiKey`'s standard key or
+     `kind: "pos"` key) is not a sealed class: the first shape keeps the body's name
+     (`CreateApiKeyBody`, so code written before the union compiles unchanged), the other shapes
+     are classes of their own named after the property that tells them apart
+     (`CreateApiKeyBodyPos`), and the operation has one overload per shape. Merging the shapes into
+     one class would have reordered the constructor's required parameters, and `JsonValue` would
+     have thrown the types away.
    - **`JsonValue`** is used for any other union (a team grant's `locations`), for a
      free-form object and for a type the document does not give.
    - **A map** (`additionalProperties` with a schema) is `Map<String, T>`, a list `List<T>`.

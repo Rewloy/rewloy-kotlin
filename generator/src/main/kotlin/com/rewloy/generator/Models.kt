@@ -114,6 +114,13 @@ internal class ModelBuilder(claimable: Collection<String>, private val reserved:
     private val components = HashMap<String, KType>()
     private var tag = ""
 
+    /**
+     * A request body that is a union of objects (`oneOf`): the first shape is the body class of that name, the others
+     * are classes of their own (`CreateApiKeyBody`, `CreateApiKeyBodyPos`) and the operation gets one overload per
+     * shape. Keyed by the first shape's class name; the value is the other shapes' class names.
+     */
+    val requestAlternatives = LinkedHashMap<String, List<String>>()
+
     fun inTag(newTag: String) {
         tag = newTag
     }
@@ -213,6 +220,7 @@ internal class ModelBuilder(claimable: Collection<String>, private val reserved:
 
     private fun mapUnion(members: JsonValue, hint: String, request: Boolean, where: String): Mapped {
         if (!request) unionOfObjects(members, hint, where)?.let { return it }
+        else requestUnion(members, hint, where)?.let { return it }
         val types = LinkedHashSet<KType>()
         var nullable = false
         for (member in members.items()) {
@@ -234,6 +242,55 @@ internal class ModelBuilder(claimable: Collection<String>, private val reserved:
         }
         if (types.size != 1) return Mapped(KType.Json, false)
         return Mapped(types.first(), nullable)
+    }
+
+    /** The members of a union when all are plain objects with properties (no `$ref`, nested union or `nullable`), else `null`. */
+    private fun objectMembers(members: JsonValue): List<JsonValue>? {
+        val list = members.items()
+        if (list.size < 2 || list.any { m ->
+                m !is com.rewloy.json.JsonObject || m.str("type") != "object" || m.prop("properties").members().isEmpty() || m.prop("oneOf") != null ||
+                    m.prop("anyOf") != null || m.prop("allOf") != null || m.prop("\$ref") != null || m.flag("nullable")
+            }
+        ) {
+            return null
+        }
+        return list
+    }
+
+    /** A property's only allowed value: its `const` string, or its `enum` of one string. */
+    private fun singleValue(property: JsonValue?): String? =
+        (property.prop("const") as? JsonString)?.value ?: (property.prop("enum").items().singleOrNull() as? JsonString)?.value
+
+    /**
+     * A request body that is a union of objects. The first shape keeps the name `hint` (so what a caller wrote before
+     * the union stays valid) and the others are named after the property that tells them apart (`kind` = "pos":
+     * `…Pos`) or `…Option2`; the operation takes any of them (see [requestAlternatives]). `null` when it is not a
+     * union of objects: then it stays a `JsonValue`.
+     */
+    private fun requestUnion(members: JsonValue, hint: String, where: String): Mapped? {
+        val list = objectMembers(members) ?: return null
+        val discriminator = list.first().prop("properties").members().keys.firstOrNull { name ->
+            val values = list.map { singleValue(it.prop("properties").prop(name)) }
+            values.all { it != null } && values.toSet().size == values.size
+        }
+        val suffixes = list.mapIndexed { i, m ->
+            if (discriminator != null) Naming.pascal(singleValue(m.prop("properties").prop(discriminator))!!) else "Option${i + 1}"
+        }
+        val types = list.mapIndexed { i, member ->
+            val type = mapObject(member, if (i == 0) hint else hint + suffixes[i], request = true, "$where<${suffixes[i]}>").type as KType.Obj
+            val decl = classes.first { it.name == type.name }
+            decl.doc = listOfNotNull(member.str("title"), member.str("description")).joinToString(": ").ifEmpty { null }
+            type.name
+        }
+        val others = types.drop(1)
+        requestAlternatives[types.first()] = others
+        val first = classes.first { it.name == types.first() }
+        first.doc = (first.doc?.plus("\n\n") ?: "") + "One of ${types.size} body shapes; the others: " + others.joinToString(", ") { "[$it]" } + "."
+        for (name in others) {
+            val decl = classes.first { it.name == name }
+            decl.doc = (decl.doc?.plus("\n\n") ?: "") + "The alternative body shape of [${types.first()}]."
+        }
+        return Mapped(KType.Obj(types.first()), false)
     }
 
     /**

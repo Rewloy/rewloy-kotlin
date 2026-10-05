@@ -11,7 +11,7 @@ plugins {
 
 allprojects {
     group = "com.rewloy"
-    version = "0.2.3"
+    version = "0.2.4"
 }
 
 // `./gradlew generate` regenerates src/main/kotlin/com/rewloy/generated from the live OpenAPI document;

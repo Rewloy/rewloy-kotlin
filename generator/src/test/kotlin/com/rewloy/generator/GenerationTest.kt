@@ -44,8 +44,10 @@ class GenerationTest {
         val count = ApiGenerator.countOperations(snapshot)
         assertTrue(count > 200)
         val plain = Regex("^    public fun (\\w+)\\(", RegexOption.MULTILINE).findAll(api).map { it.groupValues[1] }.toList()
-        assertEquals(plain.size, plain.toSet().size)
-        val primary = plain.filter { !it.endsWith("WithResponse") && !it.endsWith("All") }
+        // A name appears twice only for an operation whose body is a union of objects: one overload per shape.
+        val overloaded = plain.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+        assertEquals(setOf("createApiKey", "createApiKeyWithResponse"), overloaded)
+        val primary = plain.toSet().filter { !it.endsWith("WithResponse") && !it.endsWith("All") }
         assertEquals(count, primary.size)
     }
 
@@ -121,6 +123,20 @@ class GenerationTest {
         // Members that are not all objects stay a JsonValue.
         val mixed = generated("""{"/v1/a":{${op("getA", responses = """{"200":{"content":{"application/json":{"schema":{"type":"object","properties":{"data":{"oneOf":[{"type":"object","properties":{"x":{"type":"string"}}},{"type":"array","items":{"type":"string"}}]}}}}}}}""")}}}""")
         assertTrue("public fun getA(options: RequestOptions? = null): JsonValue =" in mixed)
+    }
+
+    @Test
+    fun `a request body that is a union of objects keeps the first shape's class and gets an overload per other shape`() {
+        val body = """{"oneOf":[
+            {"type":"object","title":"Key","properties":{"kind":{"type":"string","enum":["standard"]},"name":{"type":"string"},"password":{"type":"string"}},"required":["name","password"]},
+            {"type":"object","title":"Pos key","properties":{"kind":{"const":"pos","type":"string"},"locationId":{"type":"string"},"password":{"type":"string"}},"required":["kind","locationId","password"]}]}"""
+        val code = generated("""{"/v1/k":{${op("makeKey", "post", """"requestBody":{"required":true,"content":{"application/json":{"schema":$body}}}""")}}}""")
+        assertTrue("public class MakeKeyBody(" in code, "the first shape keeps the body's name")
+        assertTrue("public class MakeKeyBodyPos(" in code, "the other one is named after the const property")
+        assertTrue("public fun makeKey(body: MakeKeyBody, options: RequestOptions? = null)" in code)
+        assertTrue("public fun makeKey(body: MakeKeyBodyPos, options: RequestOptions? = null)" in code, "one overload per shape")
+        assertTrue("public fun makeKeyWithResponse(body: MakeKeyBodyPos, options: RequestOptions? = null)" in code)
+        assertTrue("body.toJsonValue()" in code && "body?.toJsonValue()" !in code, "the body is required: both shapes have required fields")
     }
 
     @Test
