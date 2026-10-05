@@ -2,7 +2,7 @@ package com.rewloy
 
 /** The smallest answers the API's schemas accept. */
 object Fixtures {
-    const val PASS = """{"data":{"serial":"ABCD-EFGH-JKLM","programId":"0192f7c1-0000-7000-8000-000000000002","type":"stamp","status":"active","balance":3,"rewardReady":false,"rewardsReady":0,"updatedAt":"2026-10-04T10:00:00.000Z"}}"""
+    const val PASS = """{"data":{"serial":"ABCD-EFGH-JKLM","programId":"0192f7c1-0000-7000-8000-000000000002","type":"stamp","status":"active","programName":"Kahve kartı","currency":"TRY","balance":3,"rewardReady":false,"rewardsReady":0,"updatedAt":"2026-10-04T10:00:00.000Z","actions":[],"sale":{"writes":"stamps"}}}"""
 
     fun customer(n: Int) =
         """{"personId":"p$n","displayName":"Ayşe $n","email":null,"identifiers":[],"marketingConsent":true,"passCount":1,"visits":$n,"lastSeen":null,"createdAt":"2026-10-01T10:00:00.000Z","blocked":false,"cards":[]}"""

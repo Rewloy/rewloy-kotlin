@@ -20,7 +20,7 @@ class ReadmeExamplesTest {
         rig.server.script = { r, _ ->
             when {
                 r.path == "/v1/passes/ABCD-EFGH-JKLM" -> Answer(200, Fixtures.PASS)
-                r.path == "/v1/passes" -> Answer(201, """{"data":{"serial":"ABCD-EFGH-JKLM","cardUrl":"https://rewloy.com/c/x"}}""")
+                r.path == "/v1/passes" -> Answer(201, """{"data":{"serial":"ABCD-EFGH-JKLM","cardUrl":"https://rewloy.com/c/x","created":true}}""")
                 else -> Answer(200, Fixtures.ACTION)
             }
         }
