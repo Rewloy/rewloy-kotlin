@@ -1,0 +1,311 @@
+# On a pushed v* tag: build and test the library, add the version to Rewloy's
+# own Maven repository, https://maven.rewloy.com (the repository Rewloy/maven,
+# served by GitHub Pages), and push only the new files there. Nothing goes to
+# Maven Central (docs/DECISIONS.md, 32); the files still meet its rules.
+#
+# Two jobs, so that the key that can write to Rewloy/maven never meets
+# third-party build code (Gradle plugins, dependencies):
+#
+#   build    No secrets. Checks the tag is exactly v + the version in
+#            build.gradle.kts, runs what ci.yml runs on Linux (`check`: every
+#            module's tests and the Android API 21 check; the tests on Java 8),
+#            checks out Rewloy/maven read-only into maven-repo and runs
+#            publishAllPublicationsToRewloyRepoRepository into it, so Gradle
+#            adds the version to the maven-metadata.xml files already there.
+#            Uploads the new and changed files under com/rewloy/ (nothing else)
+#            as the artifact "maven-repo". Windows: ci.yml runs on the same tag
+#            push; tag a commit whose CI on main is green.
+#
+#   publish  Environment "maven": the only job that can read the deploy key.
+#            Runs no Gradle and no third-party code. Checks out Rewloy/maven
+#            with the key, downloads the artifact into a separate directory and
+#            refuses it unless it is exactly: new files of this version (jar,
+#            sources, javadoc, POM, Gradle module, their checksums, all
+#            checked) plus the maven-metadata.xml files and their checksums,
+#            each still listing every version it listed before. A version
+#            that is already in Rewloy/maven is refused: a published version is
+#            never changed. Then it copies the files in, commits
+#            "rewloy-kotlin X.Y.Z" and pushes to main (never forced). Pages
+#            serves it a minute or two later.
+#
+# One-time setup:
+#   1. Rewloy/maven: public; Settings -> Pages: deploy from the branch main,
+#      / (root), custom domain maven.rewloy.com (also its CNAME file).
+#   2. DNS of rewloy.com (Cloudflare): CNAME maven -> rewloy.github.io, proxy
+#      off ("DNS only") so that GitHub can issue the certificate. Once it has,
+#      Rewloy/maven Settings -> Pages -> Enforce HTTPS. Gradle and Maven refuse
+#      a plain-http repository, so nothing resolves before this step.
+#   3. A deploy key (the organisation must allow deploy keys). An ed25519 pair
+#      made with `ssh-keygen -t ed25519 -N ""`: the public key is a deploy key
+#      of Rewloy/maven, "rewloy-kotlin release", WITH write access; the private
+#      key is the secret MAVEN_REPO_DEPLOY_KEY of this repository's
+#      environment "maven". An environment secret, not a repository secret:
+#      only a job that runs in "maven" can read it. Delete the private key
+#      file afterwards. To rotate, do the same and remove the old deploy key.
+#   4. This repository, Settings -> Environments -> "maven": deployment
+#      branches and tags -> selected, the TAG rule v* only (as rewloy-dotnet's
+#      "nuget"), so no branch can run the publish job.
+#   5. Recommended: a tag ruleset on v* (Settings -> Rules -> Rulesets) that
+#      lets only admins create v* tags and blocks updating or deleting them.
+#
+# Re-running: a failed publish job can be re-run alone (it reuses the
+# artifact). If Rewloy/maven moved meanwhile (another release), re-run the whole
+# workflow so that the metadata is rebuilt on top of it. Push one tag at a time:
+# runs queue one behind the other, and GitHub keeps only one waiting run.
+# Rewloy/maven's README, index.html and CNAME are edited by hand; files under
+# com/rewloy/ only ever come from this workflow.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+# One release at a time: each adds to the maven-metadata.xml files the one before pushed.
+concurrency:
+  group: release-maven
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: build, test, publish into a checkout
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Gradle runs on 21; 8 is the second runtime the tests run on (JAVA_HOME_8_X64), as in ci.yml.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            21
+
+      # No Gradle cache: what this job builds is published, and caches are written by other runs.
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-disabled: true
+
+      # First, so that a wrong tag fails in seconds.
+      - name: Check the tag matches the version
+        run: |
+          version="$(./gradlew -q :properties --property version --console=plain | sed -n 's/^version: //p')"
+          if [ -z "$version" ] || [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match version \"${version}\" in build.gradle.kts"
+            exit 1
+          fi
+          case "$version" in *SNAPSHOT*) echo "::error::A SNAPSHOT version is not released"; exit 1 ;; esac
+          echo "Releasing rewloy-kotlin ${version}"
+
+      # The checks of ci.yml: every module's tests and the Android API 21 check, then the tests on Java 8.
+      - run: ./gradlew check --console=plain
+      - run: ./gradlew test -PtestJava=8 --console=plain
+
+      # Read-only (a public repository; no credentials are kept). Gradle needs the
+      # published maven-metadata.xml files to add this version to them.
+      - uses: actions/checkout@v7
+        with:
+          repository: Rewloy/maven
+          ref: main
+          path: maven-repo
+          persist-credentials: false
+
+      - name: Publish into the checkout
+        run: ./gradlew publishAllPublicationsToRewloyRepoRepository -PrewloyRepoDir=maven-repo --console=plain
+
+      # Only what is new or changed under com/rewloy/ goes on; any other change stops here.
+      - name: Collect the new files
+        run: |
+          stage="$RUNNER_TEMP/maven-repo"
+          mkdir -p "$stage"
+          git -C maven-repo status --porcelain=v1 -z --untracked-files=all > "$RUNNER_TEMP/changes"
+          while IFS= read -r -d '' entry; do
+            xy="${entry:0:2}"
+            path="${entry:3}"
+            case "$path" in
+              com/rewloy/*) ;;
+              *) echo "::error::Publishing changed ${path}, outside com/rewloy/"; exit 1 ;;
+            esac
+            case "$xy" in
+              '??'|' M') ;;
+              *) echo "::error::Publishing made an unexpected change (${xy}) to ${path}"; exit 1 ;;
+            esac
+            mkdir -p "$stage/$(dirname "$path")"
+            cp "maven-repo/$path" "$stage/$path"
+          done < "$RUNNER_TEMP/changes"
+          if [ -z "$(find "$stage" -type f)" ]; then
+            echo "::error::Nothing was published"
+            exit 1
+          fi
+          (cd "$stage" && find . -type f | sort)
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: maven-repo
+          path: ${{ runner.temp }}/maven-repo
+          if-no-files-found: error
+
+  publish:
+    name: publish to maven.rewloy.com
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: maven          # its secret MAVEN_REPO_DEPLOY_KEY; deployments only from v* tags
+    permissions:
+      contents: read
+    steps:
+      # From the tag itself, not from anything the build job produced.
+      - name: Version from the tag
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || [[ "$version" == *SNAPSHOT* ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} is not v<major>.<minor>.<patch>[-<pre-release>]"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          repository: Rewloy/maven
+          ref: main
+          path: maven-repo
+          ssh-key: ${{ secrets.MAVEN_REPO_DEPLOY_KEY }}
+
+      # Into a directory of its own, not over the checkout: a file the build job
+      # put into maven-repo/.git (a hook, the config) would run with the key.
+      - uses: actions/download-artifact@v8
+        with:
+          name: maven-repo
+          path: ${{ runner.temp }}/release
+
+      - name: Check the files and copy them in
+        shell: python3 {0}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          import hashlib, os, pathlib, re, shutil, subprocess, sys
+          import xml.etree.ElementTree as ET
+
+          version = os.environ["VERSION"]
+          src = pathlib.Path(os.environ["RUNNER_TEMP"], "release")
+          repo = pathlib.Path("maven-repo")
+          SUMS = ("md5", "sha1", "sha256", "sha512")
+          v = re.escape(version)
+          art = r"[a-z0-9][a-z0-9.-]*"
+          version_file = re.compile(rf"com/rewloy/(?P<a>{art})/{v}/(?P=a)-{v}(-[a-z]+)?\.(jar|pom|module)(\.asc)?(\.(md5|sha1|sha256|sha512))?")
+          metadata_file = re.compile(rf"com/rewloy/(?P<a>{art})/maven-metadata\.xml(\.(md5|sha1|sha256|sha512))?")
+
+          def fail(message):
+              print(f"::error::{message}")
+              sys.exit(1)
+
+          # 1. What the build job sent: regular files only, each a file of this version or a metadata file.
+          files = {}
+          for root, dirs, names in os.walk(src):
+              for name in dirs + names:
+                  p = pathlib.Path(root, name)
+                  rel = p.relative_to(src).as_posix()
+                  if p.is_symlink():
+                      fail(f"{rel} is a symbolic link")
+                  if name in names:
+                      if not p.is_file():
+                          fail(f"{rel} is not a regular file")
+                      if not (version_file.fullmatch(rel) or metadata_file.fullmatch(rel)):
+                          fail(f"{rel} is neither a file of {version} nor a maven-metadata file")
+                      files[rel] = p
+          if not files:
+              fail("The artifact is empty")
+          artifacts = sorted({(version_file.fullmatch(r) or metadata_file.fullmatch(r)).group("a") for r in files})
+
+          # 2. A published version is never changed: it must be new, and complete.
+          for a in artifacts:
+              if (repo / "com/rewloy" / a / version).exists():
+                  fail(f"com.rewloy:{a}:{version} is already published; versions are immutable")
+              for name in (f"{a}-{version}.pom", f"{a}-{version}.jar", f"{a}-{version}-sources.jar", f"{a}-{version}-javadoc.jar"):
+                  if f"com/rewloy/{a}/{version}/{name}" not in files:
+                      fail(f"com.rewloy:{a}:{version} has no {name}")
+              if f"com/rewloy/{a}/maven-metadata.xml" not in files:
+                  fail(f"com.rewloy:{a} has no maven-metadata.xml")
+
+          # 3. Every file has its .md5 and .sha1 (Central's minimum), and every checksum present is right.
+          for rel, p in files.items():
+              base, _, ext = rel.rpartition(".")
+              if ext in SUMS:
+                  if base not in files:
+                      fail(f"{rel} is the checksum of a file that is not there")
+                  continue
+              data = p.read_bytes()
+              for alg in SUMS:
+                  s = files.get(f"{rel}.{alg}")
+                  if s is None:
+                      if alg in ("md5", "sha1"):
+                          fail(f"{rel} has no .{alg}")
+                      continue
+                  words = s.read_text(encoding="ascii", errors="replace").split()
+                  if not words or words[0].lower() != hashlib.new(alg, data).hexdigest():
+                      fail(f"{rel}.{alg} does not match {rel}")
+
+          # 4. The POMs name themselves; each maven-metadata.xml keeps every version it listed and adds only this one.
+          M = "{http://maven.apache.org/POM/4.0.0}"
+          for a in artifacts:
+              pom = ET.parse(files[f"com/rewloy/{a}/{version}/{a}-{version}.pom"]).getroot()
+              if (pom.findtext(M + "groupId"), pom.findtext(M + "artifactId"), pom.findtext(M + "version")) != ("com.rewloy", a, version):
+                  fail(f"The POM of {a} {version} names another artifact")
+              def versions(path):
+                  root = ET.parse(path).getroot()
+                  if root.findtext("groupId") != "com.rewloy" or root.findtext("artifactId") != a:
+                      fail(f"{path} is not the metadata of com.rewloy:{a}")
+                  return {e.text for e in root.findall("versioning/versions/version")}
+              new = versions(files[f"com/rewloy/{a}/maven-metadata.xml"])
+              old_path = repo / "com/rewloy" / a / "maven-metadata.xml"
+              old = versions(old_path) if old_path.exists() else set()
+              if not old <= new:
+                  fail(f"maven-metadata.xml of {a} drops {sorted(old - new)}")
+              if new - old != {version}:
+                  fail(f"maven-metadata.xml of {a} adds {sorted(new - old)}, not just {version}")
+
+          # 5. Copy in; then, as git sees the checkout: only new files of this version and new or changed metadata.
+          for rel, p in files.items():
+              dest = repo / rel
+              dest.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(p, dest)
+          status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+                                  check=True, capture_output=True).stdout.decode()
+          entries = [e for e in status.split("\0") if e]
+          for e in entries:
+              xy, path = e[:2], e[3:]
+              if xy == "??" and (version_file.fullmatch(path) or metadata_file.fullmatch(path)):
+                  continue
+              if xy == " M" and metadata_file.fullmatch(path):
+                  continue
+              fail(f"Refused: {xy} {path}")
+          print(f"{len(entries)} files for {', '.join(artifacts)} {version}:")
+          for e in sorted(entries):
+              print(" ", e)
+
+      - name: Commit and push
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd maven-repo
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- com/rewloy
+          if git diff --cached --quiet; then
+            echo "::error::Nothing to commit"
+            exit 1
+          fi
+          git commit -q -m "rewloy-kotlin ${VERSION}" \
+            -m "Published by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} from ${GITHUB_SHA}."
+          git push origin HEAD:main
+          git log -1 --stat --format='%H %s'

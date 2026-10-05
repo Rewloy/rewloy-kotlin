@@ -294,15 +294,55 @@ whole answer (14).
     a job that runs the tests on Java 8; and a package job that builds every artifact
     into a local directory and lists it. **`regenerate.yml`** is Node's decision 24,
     with `./gradlew check` as its check, at 06:17 UTC (Node's runs at 05:23, PHP's at
-    05:41, .NET's at 05:59).
+    05:41, .NET's at 05:59). **`release.yml`** (0.2.3) publishes a `v*` tag to
+    maven.rewloy.com (32).
 
 ## Package
 
 31. **Coordinates:** group `com.rewloy`, artifacts `rewloy`, `rewloy-okhttp` and
-    `rewloy-coroutines`, version 0.1.0 (kept in step in `build.gradle.kts`,
-    `RewloyVersion` and CHANGELOG.md; a test says so). Publishing uses the
-    `com.vanniktech.maven.publish` plugin to Central Portal: sources jar, an empty
-    javadoc jar, the POM (MIT, SCM, developer), signing from an in-memory key. It is
-    configured and not run. Needed: the Portal account and the verified `com.rewloy`
-    namespace (DNS TXT on rewloy.com), a GPG key, and the `Rewloy/rewloy-kotlin`
-    repository the POM points to, which does not exist yet.
+    `rewloy-coroutines`, one version for the three, kept in step in `build.gradle.kts`,
+    `RewloyVersion` and CHANGELOG.md (a test says so). The `com.vanniktech.maven.publish`
+    plugin builds what each artifact carries: the jar, a sources jar, an empty javadoc
+    jar, the POM (name, description, url, MIT licence, developer, SCM), Gradle module
+    metadata, and MD5, SHA-1, SHA-256 and SHA-512 checksums of every file. The test
+    fixtures (the stub server) are not published.
+32. **Published to our own Maven repository, https://maven.rewloy.com, not to Maven
+    Central** (5 Oct 2026, the owner's choice; first release 0.2.3).
+    - **Why not Central:** from 1 October 2026 Sonatype requires a paid Maven Central
+      Publisher Pro subscription for any artifact "of commercial nature", whatever the
+      volume, and its Producer Terms name service-dependent SDKs. This library is an MIT
+      client of the paid Rewloy API, so it is one. Prices are not published (a sales
+      contact form only).
+    - **How:** the public repository `Rewloy/maven`, served by GitHub Pages as
+      maven.rewloy.com (a CNAME on rewloy.com). It is a plain Maven layout
+      (`com/rewloy/<artifact>/<version>/…` and `maven-metadata.xml`), which Gradle and
+      Maven read from any static HTTPS host. Gradle writes a version into a checkout of
+      it (`publishAllPublicationsToRewloyRepoRepository -PrewloyRepoDir=<dir>`, adding
+      the version to the `maven-metadata.xml` already there), and `release.yml` pushes
+      the new files.
+    - **The rules `release.yml` enforces:** a version is published once and never
+      changed. The push may only add the files of the tagged version and change the
+      `maven-metadata.xml` files (and their checksums), which must keep every version
+      they listed; every checksum is checked. The job that runs Gradle has no secret;
+      the job that holds the write key (a deploy key of `Rewloy/maven`, stored as a
+      secret of the environment `maven`, which only `v*` tags can use) runs no Gradle
+      and no third-party code.
+    - **Central-compatible on purpose:** the files and the POM are what Central asks
+      for, and the Central configuration stays in `build.gradle.kts`
+      (`publishToMavenCentral`, signing when a key is given). Moving is the Portal
+      account, the `com.rewloy` namespace (a DNS TXT record), a GPG key, four secrets
+      and a publish step. The coordinates do not change, so users would only drop the
+      repository line.
+    - **Not signed:** the files come over HTTPS from a git history that only the
+      release workflow writes to under `com/rewloy/`. GPG signatures (`.asc`) come with
+      a move to Central; the publish job already accepts them.
+    - **An empty javadoc jar, no Dokka:** IDEs show the KDoc from the sources jar.
+      Dokka would put a large plugin and its dependencies into the build that produces
+      the release, add minutes to it, and store a generated HTML site of several MB per
+      version in a repository that keeps every version for good. Central accepts an
+      empty javadoc jar.
+    - **Limits:** GitHub Pages is free for a public repository, with soft limits of
+      1 GB per site and 100 GB of traffic a month. A release of the three artifacts is
+      about 4 MB.
+    - **What users write:** one more `repositories` entry, restricted to `com.rewloy`
+      with `includeGroup` so that Gradle asks it for nothing else.

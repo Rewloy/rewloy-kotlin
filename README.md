@@ -2,7 +2,7 @@
 
 **Rewloy API'nin resmî Kotlin, Java ve Android kütüphanesi.**
 
-> **Durum: önizleme (0.x), yayımlanmadı; API kararlı, kütüphane arayüzü 1.0'a kadar değişebilir.**
+> **Durum: önizleme (0.x); API kararlı, kütüphane arayüzü 1.0'a kadar değişebilir.**
 
 [Rewloy](https://rewloy.com), işletmelerin dijital sadakat kartlarını
 müşterinin telefonuna koyar. Kart türleri damga, puan, VIP, cashback, hediye
@@ -36,8 +36,71 @@ gerekmez.
 
 ## Kurulum
 
-Maven Central'da yayımlanana kadar kaynağından derleyin (JDK 17 ya da üstü
-Gradle için gerekir; kütüphane JVM 8 için derlenir):
+Paketler Rewloy'un kendi Maven deposundadır: **https://maven.rewloy.com**
+(Maven Central'da değil; nedeni [docs/DECISIONS.md](docs/DECISIONS.md), 32).
+Kütüphane JVM 8 için derlenir. Kotlin kullanıyorsanız derleyiciniz 2.0 ya da
+üstü olmalıdır; yalnız Java kullanıyorsanız Kotlin derleyicisine gerek yoktur.
+
+**Gradle (Kotlin DSL)**, `build.gradle.kts`. Android Studio projelerinde
+`repositories` bloğu `settings.gradle.kts` içinde,
+`dependencyResolutionManagement` altındadır.
+
+```kotlin
+repositories {
+    mavenCentral()
+    maven("https://maven.rewloy.com") {
+        content { includeGroup("com.rewloy") }   // bu depoda yalnız com.rewloy aranır
+    }
+}
+
+dependencies {
+    implementation("com.rewloy:rewloy:0.2.3")
+    // isteğe bağlı:
+    implementation("com.rewloy:rewloy-okhttp:0.2.3")      // OkHttp taşıyıcısı
+    implementation("com.rewloy:rewloy-coroutines:0.2.3")  // suspend ve Flow
+}
+```
+
+**Gradle (Groovy)**, `build.gradle`:
+
+```groovy
+repositories {
+    mavenCentral()
+    maven {
+        url = 'https://maven.rewloy.com'
+        content { includeGroup 'com.rewloy' }
+    }
+}
+
+dependencies {
+    implementation 'com.rewloy:rewloy:0.2.3'
+}
+```
+
+**Maven**, `pom.xml`:
+
+```xml
+<repositories>
+  <repository>
+    <id>rewloy</id>
+    <url>https://maven.rewloy.com</url>
+    <snapshots><enabled>false</enabled></snapshots>
+  </repository>
+</repositories>
+
+<dependencies>
+  <dependency>
+    <groupId>com.rewloy</groupId>
+    <artifactId>rewloy</artifactId>
+    <version>0.2.3</version>
+  </dependency>
+</dependencies>
+```
+
+Her paketin yanında kaynak jar'ı (IDE, KDoc açıklamalarını buradan gösterir),
+POM ve sağlama toplamları vardır.
+
+**Kaynaktan derlemek** de mümkündür (Gradle için JDK 17 ya da üstü gerekir):
 
 ```sh
 git clone https://github.com/Rewloy/rewloy-kotlin
@@ -45,20 +108,8 @@ cd rewloy-kotlin
 ./gradlew publishToMavenLocal
 ```
 
-Sonra projenizde `mavenLocal()` açıkken:
-
-```kotlin
-dependencies {
-    implementation("com.rewloy:rewloy:0.2.2")
-    // isteğe bağlı:
-    implementation("com.rewloy:rewloy-okhttp:0.2.2")      // OkHttp taşıyıcısı
-    implementation("com.rewloy:rewloy-coroutines:0.2.2")  // suspend ve Flow
-}
-```
-
-Yayımlandığında `mavenLocal()` gerekmez; koordinatlar aynıdır. Kotlin
-kullanıyorsanız derleyiciniz 2.0 ya da üstü olmalıdır; yalnız Java
-kullanıyorsanız Kotlin derleyicisine gerek yoktur.
+Sonra projenizde `mavenLocal()` açıkken aynı koordinatları kullanın (sürüm,
+`build.gradle.kts`'teki sürümdür).
 
 ## Başlarken
 
@@ -578,24 +629,26 @@ yapabilir, sayfalı bir listeyi dolaşabilirsiniz.
 
 ### Yayımlamak
 
-Maven Central yapılandırması hazır, çalıştırılmadı. Gerekenler:
-- Sonatype **Central Portal** hesabı ve `com.rewloy` ad alanının doğrulanması
-  (`rewloy.com` alan adının DNS TXT kaydıyla);
-- Bir GPG imza anahtarı;
-- GitHub'da `Rewloy/rewloy-kotlin` deposu (POM'daki adres).
+Bir sürüm `v*` etiketiyle yayımlanır. `.github/workflows/release.yml` etiketin
+`build.gradle.kts`'teki sürümle aynı olduğunu denetler, CI'ın testlerini koşar
+ve sürümü `Rewloy/maven` deposuna (https://maven.rewloy.com) ekler; yalnız yeni
+dosyaları gönderir. Kurulumu ve kuralları dosyanın başında yazılıdır.
 
-Sonra:
+1. Sürümü üç yerde yükseltin: `build.gradle.kts`, `RewloyVersion.CURRENT` ve
+   CHANGELOG.md (bir test üçünün aynı olduğunu denetler).
+2. main'e gönderin ve CI'ın yeşil olmasını bekleyin.
+3. Etiketleyin: `git tag v0.2.3 && git push origin v0.2.3`.
+
+Yayımlanmış bir sürüm değiştirilemez; bir düzeltme yeni bir sürümdür. Aynı
+dosyaları yerelde görmek için:
 
 ```sh
-export ORG_GRADLE_PROJECT_mavenCentralUsername=…       # Portal kullanıcı belirteci
-export ORG_GRADLE_PROJECT_mavenCentralPassword=…
-export ORG_GRADLE_PROJECT_signingInMemoryKey="$(gpg --armor --export-secret-keys KEYID)"
-export ORG_GRADLE_PROJECT_signingInMemoryKeyPassword=…
-./gradlew publishToMavenCentral                        # Portal'da elle yayımlanır (automaticRelease kapalı)
+./gradlew publishAllPublicationsToVerifyRepository                               # build/verify-repo altına
+./gradlew publishAllPublicationsToRewloyRepoRepository -PrewloyRepoDir=../maven  # bir Rewloy/maven klonuna; elle göndermeyin
 ```
 
-`./gradlew publishAllPublicationsToVerifyRepository` aynı paketleri imzasız
-olarak `build/verify-repo` altına yazar: yayımlanacakları görmek için.
+Maven Central yapılandırması (`publishToMavenCentral`, imza) yerinde duruyor
+ama kullanılmıyor (DECISIONS 32).
 
 ## Belgeler
 
@@ -633,8 +686,8 @@ Developer docs (in Turkish): **https://rewloy.com/gelistiriciler**.
 
 **The official Kotlin, Java and Android library for the Rewloy API.**
 
-> **Status: preview (0.x), not published yet. The API is stable; the
-> library's interface may change until 1.0.**
+> **Status: preview (0.x). The API is stable; the library's interface may
+> change until 1.0.**
 
 The documentation of the API itself is in Turkish (links above). In short:
 
@@ -654,22 +707,77 @@ The documentation of the API itself is in Turkish (links above). In short:
 
 ### Install
 
-Until it is on Maven Central, build it from source (Gradle needs JDK 17 or
-later; the library itself targets JVM 8):
+The packages are on Rewloy's own Maven repository, **https://maven.rewloy.com**
+(not Maven Central; [docs/DECISIONS.md](docs/DECISIONS.md), 32, says why). The
+library targets JVM 8. A Kotlin caller needs a Kotlin 2.0 or later compiler; a
+Java-only one needs none.
+
+Gradle (Kotlin DSL), `build.gradle.kts`. In Android Studio projects the
+`repositories` block goes in `settings.gradle.kts`, inside
+`dependencyResolutionManagement`.
+
+```kotlin
+repositories {
+    mavenCentral()
+    maven("https://maven.rewloy.com") {
+        content { includeGroup("com.rewloy") }   // only com.rewloy is looked up here
+    }
+}
+
+dependencies {
+    implementation("com.rewloy:rewloy:0.2.3")
+    implementation("com.rewloy:rewloy-okhttp:0.2.3")      // optional: an OkHttp transport
+    implementation("com.rewloy:rewloy-coroutines:0.2.3")  // optional: suspend and Flow
+}
+```
+
+Gradle (Groovy), `build.gradle`:
+
+```groovy
+repositories {
+    mavenCentral()
+    maven {
+        url = 'https://maven.rewloy.com'
+        content { includeGroup 'com.rewloy' }
+    }
+}
+
+dependencies {
+    implementation 'com.rewloy:rewloy:0.2.3'
+}
+```
+
+Maven, `pom.xml`:
+
+```xml
+<repositories>
+  <repository>
+    <id>rewloy</id>
+    <url>https://maven.rewloy.com</url>
+    <snapshots><enabled>false</enabled></snapshots>
+  </repository>
+</repositories>
+
+<dependencies>
+  <dependency>
+    <groupId>com.rewloy</groupId>
+    <artifactId>rewloy</artifactId>
+    <version>0.2.3</version>
+  </dependency>
+</dependencies>
+```
+
+Or build it from source (Gradle needs JDK 17 or later) and use the same
+coordinates with `mavenLocal()`:
 
 ```sh
 git clone https://github.com/Rewloy/rewloy-kotlin && cd rewloy-kotlin && ./gradlew publishToMavenLocal
 ```
 
-```kotlin
-dependencies {
-    implementation("com.rewloy:rewloy:0.2.2")
-    implementation("com.rewloy:rewloy-okhttp:0.2.2")      // optional: an OkHttp transport
-    implementation("com.rewloy:rewloy-coroutines:0.2.2")  // optional: suspend and Flow
-}
-```
-
-A Kotlin caller needs a Kotlin 2.0 or later compiler; a Java-only one needs none.
+Releasing: bump the version in `build.gradle.kts`, `RewloyVersion.CURRENT` and
+CHANGELOG.md, push to main, and once CI is green push a `v*` tag;
+`.github/workflows/release.yml` adds the version to https://maven.rewloy.com.
+A published version is never changed.
 
 ### Use
 

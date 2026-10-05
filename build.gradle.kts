@@ -1,4 +1,7 @@
+import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.KotlinJvm
 import com.vanniktech.maven.publish.MavenPublishBaseExtension
+import com.vanniktech.maven.publish.SourcesJar
 
 plugins {
     alias(libs.plugins.kotlin.jvm) apply false
@@ -8,7 +11,7 @@ plugins {
 
 allprojects {
     group = "com.rewloy"
-    version = "0.2.2"
+    version = "0.2.3"
 }
 
 // `./gradlew generate` regenerates src/main/kotlin/com/rewloy/generated from the live OpenAPI document;
@@ -19,8 +22,15 @@ tasks.register("generate") {
     dependsOn(":generator:generate")
 }
 
-// `./gradlew publishAllPublicationsToVerifyRepository` builds every artifact into build/verify-repo, unsigned:
-// what CI lists, to see what would be published. Publishing proper is the Maven Central tasks (README, "Releasing").
+// Where the artifacts are written. Both are directories; nothing in this build uploads anything.
+//   - `./gradlew publishAllPublicationsToVerifyRepository` builds every artifact into build/verify-repo, unsigned:
+//     what CI lists, to see what would be published.
+//   - `./gradlew publishAllPublicationsToRewloyRepoRepository -PrewloyRepoDir=<a checkout of Rewloy/maven>` adds this
+//     version to that checkout, which GitHub Pages serves as https://maven.rewloy.com. Gradle reads the
+//     maven-metadata.xml already there and adds the version to it. The release workflow
+//     (.github/workflows/release.yml) runs it and pushes the new files; without the property the repository and
+//     its tasks do not exist. A relative path is taken from this directory.
+val rewloyRepoDir: String? = providers.gradleProperty("rewloyRepoDir").orNull
 subprojects {
     plugins.withId("maven-publish") {
         extensions.configure<PublishingExtension> {
@@ -29,16 +39,26 @@ subprojects {
                     name = "verify"
                     url = uri(rootProject.layout.buildDirectory.dir("verify-repo"))
                 }
+                if (rewloyRepoDir != null) {
+                    maven {
+                        name = "rewloyRepo"
+                        url = rootProject.file(rewloyRepoDir).toURI()
+                    }
+                }
             }
         }
     }
 }
 
-// What every published artifact says about itself; each module adds its own name and description.
+// What every published artifact carries and says about itself; each module adds its own name and description.
+// The files and the POM meet Maven Central's requirements even though releases go to maven.rewloy.com
+// (docs/DECISIONS.md, 32), so that moving there later is credentials and a workflow step, not a new layout.
 subprojects {
     plugins.withId("com.vanniktech.maven.publish") {
         extensions.configure<MavenPublishBaseExtension> {
-            // Prepared, not run: publishing needs the owner's Central Portal account and a signing key (README, "Publishing").
+            // A sources jar (IDEs show the KDoc from it) and an empty javadoc jar, which Central accepts: no Dokka.
+            configure(KotlinJvm(javadocJar = JavadocJar.Empty(), sourcesJar = SourcesJar.Sources()))
+            // Configured, not used: Central now wants a paid Publisher Pro plan for a commercial SDK (DECISIONS 32).
             publishToMavenCentral(automaticRelease = false)
             if (providers.gradleProperty("signingInMemoryKey").isPresent) signAllPublications()
             pom {

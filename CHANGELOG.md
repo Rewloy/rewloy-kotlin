@@ -5,6 +5,25 @@ https://rewloy.com/gelistiriciler/degisiklikler
 
 This library's releases. The API's own changes are listed at the link above.
 
+## 0.2.3 (2026-10-05)
+
+maven.rewloy.com'daki ilk sürüm; kodu 0.2.2 ile aynıdır. Kurulum artık
+kaynaktan derlemeden, Rewloy'un kendi Maven deposundan yapılır (README,
+"Kurulum").
+
+The first release on maven.rewloy.com; the same code as 0.2.2. Install it from
+Rewloy's own Maven repository instead of building from source (README,
+"Install").
+
+- **Published to https://maven.rewloy.com** (the `Rewloy/maven` repository on
+  GitHub Pages), not Maven Central: Central has wanted a paid Publisher Pro
+  plan for commercial SDKs since 1 October 2026 (docs/DECISIONS.md, 32). Every
+  artifact still has what Central requires: a sources jar, a javadoc jar, a
+  complete POM and checksums.
+- **A release workflow** (`.github/workflows/release.yml`): a `v*` tag builds
+  and tests the library, writes the version into a checkout of `Rewloy/maven`
+  and pushes only the new files. A published version is never changed.
+
 ## 0.2.2 (2026-10-05)
 
 Rewloy 1.1.0'a (API sürümü) göre yeniden üretildi: 256 işlem (0.2.1'de 255). Kasa
