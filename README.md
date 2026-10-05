@@ -13,7 +13,8 @@ kartı, kupon ve indirimdir:
 
 Kasada QR okutulur; bakiye, ödül ve kampanyalar kartın kendisinde güncellenir.
 Panelde yapılabilen her şey [Rewloy API v1](https://rewloy.com/gelistiriciler)
-ile de yapılabilir. Bu kütüphane onu **Android POS terminallerinden ve yeni
+ile de yapılabilir (geliştirici belgeleri: **https://rewloy.com/gelistiriciler**).
+Bu kütüphane onu **Android POS terminallerinden ve yeni
 nesil yazar kasalardan** (çoğu Android çalıştırır), ayrıca her JVM'den (Java ve
 Kotlin) kullanır. Bir Android uygulaması değil, kütüphanedir; Android SDK'sı
 gerekmez.
@@ -28,8 +29,8 @@ gerekmez.
 - **Java'dan rahat.** Metotlar bloklar, istisnalar denetimsizdir, sayfalama ve
   akış `for` ile dolaşılır. Kotlin'de `suspend` ve `Flow` için ayrı, isteğe
   bağlı bir paket vardır.
-- **Güvenli tekrar.** Geçici hatalarda ölçülü yeniden deneme; kasa işleminde ve
-  kampanyada `Idempotency-Key`.
+- **Güvenli tekrar.** Geçici hatalarda ölçülü yeniden deneme; satışta, kasa
+  işleminde ve kampanyada `Idempotency-Key`.
 - **Ötesi:** sayfalama, canlı akış (SSE), webhook imzası doğrulama, iptal,
   kullanımdan kalkma bildirimleri, test modu.
 
@@ -48,10 +49,10 @@ Sonra projenizde `mavenLocal()` açıkken:
 
 ```kotlin
 dependencies {
-    implementation("com.rewloy:rewloy:0.1.0")
+    implementation("com.rewloy:rewloy:0.2.0")
     // isteğe bağlı:
-    implementation("com.rewloy:rewloy-okhttp:0.1.0")      // OkHttp taşıyıcısı
-    implementation("com.rewloy:rewloy-coroutines:0.1.0")  // suspend ve Flow
+    implementation("com.rewloy:rewloy-okhttp:0.2.0")      // OkHttp taşıyıcısı
+    implementation("com.rewloy:rewloy-coroutines:0.2.0")  // suspend ve Flow
 }
 ```
 
@@ -88,7 +89,7 @@ adresteki parametreler (`serial`, `id`…), varsa gövde, varsa sorgu, sonra
 `RequestOptions`:
 
 ```kotlin
-rewloy.passAction(serial, PassActionBody("earn-stamps", locationId), RequestOptions(idempotencyKey = "fis-$fisNo"))
+rewloy.passAction(serial, PassActionBody("earn-stamps", locationId), RequestOptions(idempotencyKey = "kasa3-z0187-fis$fisNo"))
 rewloy.listCustomers(ListCustomersQuery(q = "ayşe", limit = 50))
 ```
 
@@ -139,12 +140,28 @@ kimlik verilmiş bir istemci kurulurken `IllegalArgumentException` atar; mesajı
 anahtarın kendisini içermez.
 
 Diğer seçenekler (`Rewloy { … }` ya da `RewloyOptions.builder()`):
-- `baseUrl` (varsayılan `https://app.rewloy.com`);
+- `baseUrl` (varsayılan `https://app.rewloy.com`; `/v1` olmadan, kütüphane ekler);
 - `timeoutMs` (60000): bir denemenin tamamı için;
 - `maxRetries` (2);
 - `userAgent`: gönderilen `User-Agent`a eklenir, örneğin `"KasaPOS/4.2"`;
 - `transport`: HTTP katmanı (aşağıda);
 - `deprecationListener` ve `sleeper`.
+
+### Başka bir adres (staging)
+
+API'nin başka bir kopyasına (kendi staging ortamınız ya da bir vekil sunucu)
+`baseUrl` ile bağlanılır:
+
+```kotlin
+val rewloy = Rewloy {
+    apiKey(System.getenv("REWLOY_API_KEY"))
+    baseUrl("https://rewloy-staging.ornek.com")   // /v1 olmadan
+}
+```
+
+Java'da `RewloyOptions.builder().apiKey(…).baseUrl("https://…").build()`.
+Gerçek müşterilere dokunmadan denemek için adres değiştirmeniz gerekmez:
+[test modu](#test-modu) aynı adreste, ayrı bir test ortamıyla çalışır.
 
 ## Kart vermek ve kasada işlem
 
@@ -155,16 +172,76 @@ println(kart.serial + " " + kart.cardUrl)
 val sonuc = rewloy.passAction(
     kart.serial,
     PassActionBody("earn-stamps", locationId).apply { count = 1 },
-    RequestOptions(idempotencyKey = "fis-$fisNo"),
+    RequestOptions(idempotencyKey = "kasa3-z0187-fis$fisNo"),   // aşağıya bakın
 )
-if (sonuc.duplicate) println("Bu fiş zaten işlenmiş")
+if (sonuc.duplicate) println("Bu işlem zaten yazılmış")
 ```
 
-`passAction` ve `sendCampaign` bir `Idempotency-Key` ister. Verilmezse kütüphane
-bir UUID üretir ve aynı çağrının her denemesinde aynısını gönderir. Kasada fiş
-numarası gibi kendi anahtarınızı vermek daha iyidir: uygulama çöküp yeniden
-başlasa bile aynı fiş ikinci kez işlenmez, aynı anahtarla tekrar ilk sonucu
-`duplicate: true` ile döndürür.
+### Satış: `recordSale`
+
+Kasa ya da kendi yazılımınız için en kolay yol `recordSale`dir: "bu satış
+oldu, sen yaz". Ödenen toplamı (kartın para biriminde, kuruş) gönderirsiniz;
+ne yazılacağına kartın türü ve programın kendi kuralı karar verir. Kartın
+türünü bilmeniz gerekmez.
+
+```kotlin
+val kart = rewloy.getPass(seri)
+// Kartın türüne özgü alanlar; `balance` yerine bunları okuyun.
+kart.stamps?.let { println("${it.count} / ${it.max} damga") }
+kart.points?.let { println("$it puan") }
+kart.money?.let { println("${it.amountMinor / 100.0} ${it.currency}") }
+println("${kart.programName} ${kart.customer?.name ?: ""}")   // customer: yalnız customers.read yetkisiyle
+
+// Fiş numarası anahtar olamaz: kasa + Z no + fiş no, ya da satışla saklanan bir UUID.
+val anahtar = "kasa3-z0187-fis$fisNo"
+val satis = rewloy.recordSale(
+    seri,
+    RecordSaleBody(
+        amountMinor = 4550,            // 45,50: kartın para biriminde (kart.currency), kuruş
+        locationId = locationId,
+        reference = "fis-$fisNo",      // fiş numarası buraya yazılır
+        currency = kart.currency,      // isteğe bağlı güvence: uyuşmazsa 422 CURRENCY_MISMATCH
+    ),
+    RequestOptions(idempotencyKey = anahtar),
+)
+if (satis.applied == "none") println("Yazılan bir şey yok: ${satis.reason}")
+else println("${satis.credited} ${satis.applied} yazıldı, bakiye ${satis.balance}")
+if (satis.rewardReady) println("Ödül hazır")
+```
+
+`GET /v1/passes/{serial}` ayrıca `actions` (kartın aldığı kasa işlemleri ve
+şimdi yapılıp yapılamayacakları) ve `sale` (bir satışın bu kartta ne
+yazacağı) alanlarını verir.
+
+**İade.** `reverseSale` bir satışın karta yazdığını geri alır; satışı
+yazarken gönderdiğiniz anahtarla (`saleKey`) ya da `reference`la bulur:
+
+```kotlin
+val geri = rewloy.reverseSale(seri, ReverseSaleBody(saleKey = anahtar, locationId = locationId))
+println("${geri.reversed} ${geri.applied} geri alındı, bakiye ${geri.balance}")
+```
+
+Bir satış bir kez geri alınır (tekrar `duplicate: true` döner). Kazanılan
+kullanılmışsa (ödüle ya da harcamaya gitmişse) `409 SALE_ALREADY_SPENT` gelir ve
+hiçbir şey yazılmaz.
+
+### `Idempotency-Key`
+
+`recordSale`, `passAction` ve `sendCampaign` bir `Idempotency-Key` ister.
+Verilmezse kütüphane bir UUID üretir ve aynı çağrının her denemesinde aynısını
+gönderir; ama uygulama çöküp yeniden başlarsa yeni bir anahtar üretilir ve
+satış ikinci kez yazılabilir. Kasada anahtarı kendiniz üretip satışla birlikte
+saklayın:
+- **Anahtar bir kimlik için kalıcı olarak tekildir** (8–64 karakter; defterden
+  hiç silinmez). Aynı anahtarla aynı isteğin tekrarı ikinci kez yazmaz ve
+  ilk sonucu `duplicate: true` ile döndürür. Aynı anahtar başka bir gövdeyle
+  `422 IDEMPOTENCY_KEY_REUSED` alır.
+- **Fiş numarası tek başına anahtar olamaz:** yazarkasa fiş numaraları Z
+  raporundan sonra yeniden başlar. Kasa + Z no + fiş no birleşimi
+  (`kasa3-z0187-fis0042`) ya da satışla birlikte saklanıp tekrarda yeniden
+  gönderilen bir UUID kullanın.
+- **Fiş numarası `reference` alanına** yazılır; müşterinin geçmişinde ve işlem
+  dökümünde görünür.
 
 ## Sayfalama
 
@@ -233,6 +310,21 @@ gösterilen sırla (`whsec_…`) doğrular:
 - `t` şimdiden 300 saniyeden (`toleranceSeconds`) uzaksa reddeder;
 - gövdeyi ayrıştırılmış olarak döndürür (`WebhookEvent`).
 
+Webhook'u panelden ya da API'den ekleyebilirsiniz. `webhooks.manage` yetkili
+bir API anahtarı `createWebhook`, `listWebhooks`, `getWebhook`,
+`setWebhookStatus`, `testWebhook` ve `listWebhookDeliveries`yi çağırabilir;
+`webhookEvents` abone olunabilecek olayları söyler. Sır (`secret`) yalnız
+`createWebhook` yanıtında gelir, saklayın:
+
+```kotlin
+val yeni = rewloy.createWebhook(CreateWebhookBody("https://ornek.com/rewloy/webhook", listOf("pass.activity", "pass.voided")))
+val sir = yeni.secret
+rewloy.testWebhook(yeni.webhook.id)   // webhook.test olayı gönderir
+```
+
+Adres herkese açık bir `https` adresi olmalıdır (test ortamında da);
+yerelde bir tünel kullanın.
+
 Tutmazsa `WebhookSignatureException` atar (`reason`: `MISSING`, `MALFORMED`,
 `EXPIRED`, `MISMATCH`, `PAYLOAD`): 400 ile yanıtlayın ve hiçbir işlem yapmayın.
 Gövde mutlaka ham olmalıdır: JSON olarak ayrıştırılıp yeniden yazılan bir gövde
@@ -281,7 +373,7 @@ her deneme yeni bir `t` ile imzalanır. Kendi işleyicinizi test etmek için
 
 ```kotlin
 try {
-    rewloy.passAction(serial, govde, RequestOptions(idempotencyKey = "fis-$fisNo"))
+    rewloy.passAction(serial, govde, RequestOptions(idempotencyKey = "kasa3-z0187-fis$fisNo"))
 } catch (e: RateLimitException) {
     println("${e.retryAfterSeconds} saniye sonra yeniden deneyin")
 } catch (e: RewloyException) {
@@ -348,9 +440,30 @@ yanit.data        // kampanya
 Sonu `WithResponse` olan her metot yanıtın tamamını döndürür: `data`, sayfalı
 listede `meta`, `statusCode`, `headers`, `requestId`, `mode` ve `replayed`.
 
-`mode`, yanıtın `Rewloy-Mode` başlığıdır. Test anahtarlarıyla (`rwk_test_…`)
-yapılan çağrılar gerçek mesaj göndermez, gerçek kart vermez; yanıtlar bunu bu
-başlıkla söyler. Başlık yoksa `null`. Canlı akışta aynı bilgi `akis.mode`dadır.
+`mode`, yanıtın `Rewloy-Mode` başlığıdır: `live` ya da `test`. Başlık yoksa
+`null`. Canlı akışta aynı bilgi `akis.mode`dadır.
+
+## Test modu
+
+Gerçek müşterilere dokunmadan denemek için işletmenizin bir **test ortamı**
+vardır: ona bağlı ayrı bir işletme (adı "· Test" ile biter); kendi
+programları, müşterileri, kartları, anahtarları ve webhook'ları. Panel →
+Geliştirici → "Test ortamını aç" ya da `POST /v1/test/environment`. Orada
+oluşturulan anahtar `rwk_test_` ile başlar ve aynı adreste, aynı yollarla
+çalışır:
+
+```kotlin
+val rewloy = Rewloy { apiKey(System.getenv("REWLOY_TEST_KEY")) }   // rwk_test_…
+println(rewloy.getPassWithResponse(seri).isTestMode)               // true
+```
+
+- Test ortamı hiçbir şey göndermez (e-posta, bildirim, SMS); kartlar
+  cüzdanlara eklenmez. Gönderilmeyenler `GET /v1/test/messages` ile okunur.
+- Webhook'lar teslim edilir ve `Rewloy-Test: 1` başlığıyla `"test": true`
+  taşır.
+- Gerçek müşteri verisini test ortamına girmeyin.
+
+Ayrıntı: https://rewloy.com/gelistiriciler#test-ortamı
 
 İşlem tablosu da dışa açıktır: `RewloyOperations.passAction` →
 `OperationInfo` (`method`, `path`, `credentials`, `idempotency`, `isPaged`,
@@ -456,6 +569,8 @@ Bir güvenlik açığı bulursanız [SECURITY.md](SECURITY.md) dosyasındaki yol
 
 ## English
 
+Developer docs (in Turkish): **https://rewloy.com/gelistiriciler**.
+
 **The official Kotlin, Java and Android library for the Rewloy API.**
 
 > **Status: preview (0.x), not published yet. The API is stable; the
@@ -488,9 +603,9 @@ git clone https://github.com/Rewloy/rewloy-kotlin && cd rewloy-kotlin && ./gradl
 
 ```kotlin
 dependencies {
-    implementation("com.rewloy:rewloy:0.1.0")
-    implementation("com.rewloy:rewloy-okhttp:0.1.0")      // optional: an OkHttp transport
-    implementation("com.rewloy:rewloy-coroutines:0.1.0")  // optional: suspend and Flow
+    implementation("com.rewloy:rewloy:0.2.0")
+    implementation("com.rewloy:rewloy-okhttp:0.2.0")      // optional: an OkHttp transport
+    implementation("com.rewloy:rewloy-coroutines:0.2.0")  // optional: suspend and Flow
 }
 ```
 
@@ -502,21 +617,39 @@ A Kotlin caller needs a Kotlin 2.0 or later compiler; a Java-only one needs none
 val rewloy = Rewloy { apiKey(System.getenv("REWLOY_API_KEY")) }   // or staffSession(…) + merchant(…), or holderSession(…)
 
 val card = rewloy.issuePass(IssuePassBody(programId = programId, email = email, kvkkConsent = true))
-val result = rewloy.passAction(
+val sale = rewloy.recordSale(
     card.serial,
-    PassActionBody("earn-stamps", locationId),
-    RequestOptions(idempotencyKey = "receipt-$receiptNo"),   // generated when omitted, reused across retries
+    RecordSaleBody(amountMinor = 4550, locationId = locationId, reference = "receipt-$receiptNo"),   // amount in the card's currency, minor units
+    RequestOptions(idempotencyKey = "till3-z0187-r$receiptNo"),
 )
 ```
 
 ```java
 Rewloy rewloy = new Rewloy(RewloyOptions.builder().apiKey(key).build());
-PassActionBody body = new PassActionBody("earn-stamps", locationId);   // required fields; setters for the rest
-PassActionData result = rewloy.passAction(serial, body, RequestOptions.builder().idempotencyKey("receipt-" + no).build());
+RecordSaleBody body = new RecordSaleBody(4550);   // required fields; setters for the rest
+body.setLocationId(locationId);
+RecordSaleData sale = rewloy.recordSale(serial, body, RequestOptions.builder().idempotencyKey("till3-z0187-r" + no).build());
 ```
 
 - **Blocking.** A call waits for the answer: use a worker thread, never
   Android's main thread. The client is thread-safe: make one and share it.
+- **Till.** `recordSale` writes a completed sale to a card (the card type and
+  the programme's own rule decide what is written); `getPass` returns the
+  card's structured fields (`programName`, `currency`, `stamps`, `points`,
+  `money`, `customer`); `reverseSale` takes a refunded sale back:
+  `rewloy.reverseSale(serial, ReverseSaleBody(saleKey = key))`.
+- **Idempotency keys.** `recordSale`, `passAction` and `sendCampaign` need an
+  `Idempotency-Key`. A key is unique **for good per credential**: do not use the
+  receipt number alone (fiscal receipt numbers restart after the Z report) but
+  register + Z number + receipt number, or a UUID stored with the sale. The
+  receipt number goes in `reference`. A generated key only covers the retries
+  of one call, not a restart of your app.
+- **Base URL.** `Rewloy { apiKey(key); baseUrl("https://staging.example.com") }`
+  (the origin, without `/v1`). Default `https://app.rewloy.com`.
+- **Test mode.** Open the test environment (panel → Developer, or
+  `POST /v1/test/environment`) and use its `rwk_test_` key at the same address:
+  a separate test business that sends nothing and never reaches real
+  customers. Webhooks are delivered with `Rewloy-Test: 1`.
 - **Arguments.** Path parameters, then the body and the query the operation
   takes, then `RequestOptions` (`idempotencyKey`, `merchant`, `timeoutMs`,
   `maxRetries`, `cancel`, `headers`).
@@ -525,7 +658,7 @@ PassActionData result = rewloy.passAction(serial, body, RequestOptions.builder()
   OpenAPI document. Ids and timestamps are `String`s (`java.time` is missing
   from Android before 8).
 - **The whole answer.** `…WithResponse` methods return `statusCode`,
-  `headers`, `requestId`, `mode` (the `Rewloy-Mode` header, for test keys) and
+  `headers`, `requestId`, `mode` (the `Rewloy-Mode` header: `live` or `test`; `isTestMode`) and
   `replayed` (`Idempotent-Replayed`) beside the data.
 - **Pagination.** `rewloy.listCustomersAll(query)` is an `Iterable` over the
   items of every page.

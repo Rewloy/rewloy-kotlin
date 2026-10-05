@@ -547,5 +547,5 @@ internal object UserAgent {
 
 /** The library's version: the same as the Gradle build's, which a test checks. */
 internal object RewloyVersion {
-    const val CURRENT: String = "0.1.0"
+    const val CURRENT: String = "0.2.0"
 }

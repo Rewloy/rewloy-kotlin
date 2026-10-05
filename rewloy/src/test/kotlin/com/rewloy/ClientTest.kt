@@ -34,7 +34,7 @@ class ClientTest {
         assertEquals("gzip", r.header("accept-encoding"))
         assertNull(r.header("rewloy-merchant"))
         assertNull(r.header("idempotency-key"))
-        assertTrue(r.header("user-agent")!!.startsWith("rewloy-kotlin/0.1.0 java/"), r.header("user-agent"))
+        assertTrue(r.header("user-agent")!!.startsWith("rewloy-kotlin/0.2.0 java/"), r.header("user-agent"))
     }
 
     @Test

@@ -1,11 +1,14 @@
 package com.rewloy
 
 import com.rewloy.models.CorrectHolderProfileBody
+import com.rewloy.models.CreateWebhookBody
 import com.rewloy.models.IssuePassBody
 import com.rewloy.models.ListCustomersQuery
 import com.rewloy.models.LoginBody
 import com.rewloy.models.PassActionBody
 import com.rewloy.models.ProveMfaBody
+import com.rewloy.models.RecordSaleBody
+import com.rewloy.models.ReverseSaleBody
 import com.rewloy.models.SendCampaignBody
 import kotlin.concurrent.thread
 import kotlin.test.Test
@@ -40,6 +43,47 @@ class ReadmeExamplesTest {
         assertTrue(!sonuc.duplicate)
         assertEquals("fis-42", rig.server.received.last().header("idempotency-key"))
         assertEquals("""{"action":"earn-stamps","locationId":"l","count":1}""", rig.server.received.last().body)
+    }
+
+    @Test
+    fun `a sale at the till and its refund`() = Rig { apiKey("rwk_abc") }.test { rig ->
+        val rewloy = rig.rewloy
+        rig.server.script = { r, _ ->
+            when (r.path) {
+                "/v1/passes/ABCD-EFGH-JKLM" -> Answer(200, Fixtures.PASS)
+                "/v1/passes/ABCD-EFGH-JKLM/sale" -> Answer(200, """{"data":{"type":"stamp","applied":"stamps","credited":1,"balance":4,"duplicate":false,"rewardReady":false,"rewardsReady":0}}""")
+                else -> Answer(200, """{"data":{"type":"stamp","applied":"stamps","reversed":1,"balance":3,"duplicate":false,"rewardReady":false,"rewardsReady":0}}""")
+            }
+        }
+        val seri = "ABCD-EFGH-JKLM"
+        val locationId = "l"
+        val fisNo = 42
+        val kart = rewloy.getPass(seri)
+        kart.stamps?.let { println("${it.count} / ${it.max} damga") }
+        kart.points?.let { println("$it puan") }
+        kart.money?.let { println("${it.amountMinor / 100.0} ${it.currency}") }
+        assertEquals("Kahve kartı TRY ", "${kart.programName} ${kart.currency} ${kart.customer?.name ?: ""}")
+
+        val anahtar = "kasa3-z0187-fis$fisNo"
+        val satis = rewloy.recordSale(
+            seri,
+            RecordSaleBody(
+                amountMinor = 4550,
+                locationId = locationId,
+                reference = "fis-$fisNo",
+                currency = kart.currency,
+            ),
+            RequestOptions(idempotencyKey = anahtar),
+        )
+        assertEquals("stamps 1 4.0", "${satis.applied} ${satis.credited} ${satis.balance}")
+        val sent = rig.server.received.last()
+        assertEquals(anahtar, sent.header("idempotency-key"))
+        assertTrue(sent.body.contains(""""amountMinor":4550"""), sent.body)
+        assertTrue(sent.body.contains(""""reference":"fis-42""""), sent.body)
+
+        val geri = rewloy.reverseSale(seri, ReverseSaleBody(saleKey = anahtar, locationId = locationId))
+        assertEquals("1 stamps 3.0", "${geri.reversed} ${geri.applied} ${geri.balance}")
+        assertTrue(rig.server.received.last().body.contains(""""saleKey":"kasa3-z0187-fis42""""))
     }
 
     @Test
@@ -102,5 +146,12 @@ class ReadmeExamplesTest {
         val event = Webhook.verify(ByteArray(0), "h", System.getenv("REWLOY_WEBHOOK_SECRET") ?: "s")
         event.passData?.let { println("${it.card} ${it.kind} ${it.delta}") }
         println(RewloyOperations.passAction.isPaged)
+        val yeni = rewloy.createWebhook(CreateWebhookBody("https://ornek.com/rewloy/webhook", listOf("pass.activity", "pass.voided")))
+        println(yeni.secret)
+        rewloy.testWebhook(yeni.webhook.id)
+        Rewloy {
+            apiKey("rwk_x")
+            baseUrl("https://rewloy-staging.ornek.com")
+        }
     }
 }

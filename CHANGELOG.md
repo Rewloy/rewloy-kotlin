@@ -5,7 +5,53 @@ https://rewloy.com/gelistiriciler/degisiklikler
 
 This library's releases. The API's own changes are listed at the link above.
 
-## 0.1.0 (yayımlanmadı / unreleased)
+## 0.2.0 (2026-10-05)
+
+İlk yayımlanan sürüm (GitHub Release; Maven Central'a henüz çıkmadı). Rewloy
+API 1.0.5'e göre yeniden üretildi: 211 yol, 255 işlem (0.1.0 etiketlenmedi).
+Kasa için `recordSale` ve `reverseSale`; README'de yeni bir kasa örneği, test
+modu ve `baseUrl`.
+
+The first tagged release (a GitHub Release; not on Maven Central yet).
+Regenerated from Rewloy API 1.0.5: 211 paths, 255 operations (237 in the
+untagged 0.1.0).
+
+- **New operations.**
+  - *Till:* `recordSale` (`POST /v1/passes/{serial}/sale`: write a completed
+    sale to a card; the card type decides what is written) and `reverseSale`
+    (`POST /v1/passes/{serial}/sale/reverse`: take a refunded sale back).
+  - *Checkout codes and shop connections:* `quoteCheckoutCode`,
+    `holdCheckoutCode`, `captureCheckoutOrder`, `releaseCheckoutOrder`,
+    `refundCheckoutOrder`, `listOrderRedemptions`, `listShopRedemptions`,
+    `releaseShopRedemption`, `refundShopRedemption`, `setShopSettings`,
+    `setShopCeiling`, `setShopPluginAbilities`, and for the card holder
+    `holderCheckoutCodes`, `mintHolderCheckoutCode`, `cancelHolderCheckoutCode`.
+  - `getMeta` (`GET /v1/meta`): the API's version.
+- **`getPass`** now also returns `programName`, `currency`, `stamps`
+  (`count`, `max`), `points`, `money` (`amountMinor`, `currency`), `customer`
+  (with `customers.read`), `actions` and `sale`.
+- **Webhooks.** `webhooks.manage` API keys manage webhooks (`createWebhook`,
+  `listWebhooks`, `getWebhook`, `setWebhookStatus`, `testWebhook`,
+  `listWebhookDeliveries`, `webhookEvents`); a webhook reports `createdByKey`.
+- **Other fields.** `issuePass` returns `created`; business lists and `me`
+  carry `currency`; programs carry `sale`; batches `onlineValue`; shops
+  `accepts`, `settings`, `shopName`, `unbacked` and the plugin key's
+  `abilities`.
+- **Tests.** The shared answer fixtures follow the schemas of 1.0.5 (the reader
+  rejects an answer without a required field, which is what failed the
+  Regenerate check).
+- **README.**
+  - A till example with `recordSale`, the structured fields of `getPass` and
+    a refund with `reverseSale`.
+  - `Idempotency-Key`: a key is unique for good per credential. The
+    receipt number alone is not a key (fiscal receipt numbers restart after
+    the Z report): use register + Z number + receipt number, or a UUID
+    stored with the sale. The receipt number goes in `reference`.
+  - Test mode exists: `rwk_test_` keys and a test business.
+  - How to set a custom base URL (staging), and a link to the developer
+    docs, https://rewloy.com/gelistiriciler.
+
+## 0.1.0 (etiketlenmedi / never tagged)
 
 İlk önizleme. Rewloy API 1.0.0'a göre üretildi: 195 yol, 237 işlem.
 
