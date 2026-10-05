@@ -494,6 +494,12 @@ public class ListWebhooksItem(
     public val week: ListWebhooksItemWeek,
     /** Always present. */
     public val lastDelivered: String?,
+    /**
+     * Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182).
+     *
+     * Always present.
+     */
+    public val createdByKey: ListWebhooksItemCreatedByKey?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): ListWebhooksItem {
@@ -508,6 +514,7 @@ public class ListWebhooksItem(
                 createdAt = o.str("createdAt"),
                 week = o.req("week") { x, y -> ListWebhooksItemWeek.read(x, y) },
                 lastDelivered = o.strOrNull("lastDelivered"),
+                createdByKey = o.opt("createdByKey") { x, y -> ListWebhooksItemCreatedByKey.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -529,6 +536,24 @@ public class ListWebhooksItemWeek(
                 delivered = o.int("delivered"),
                 failed = o.int("failed"),
                 pending = o.int("pending"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182). */
+public class ListWebhooksItemCreatedByKey(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ListWebhooksItemCreatedByKey {
+            val o = ObjectReader(v, path)
+            return ListWebhooksItemCreatedByKey(
+                id = o.str("id"),
+                name = o.str("name"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -603,6 +628,12 @@ public class CreateWebhookDataWebhook(
     public val week: CreateWebhookDataWebhookWeek,
     /** Always present. */
     public val lastDelivered: String?,
+    /**
+     * Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182).
+     *
+     * Always present.
+     */
+    public val createdByKey: CreateWebhookDataWebhookCreatedByKey?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): CreateWebhookDataWebhook {
@@ -617,6 +648,7 @@ public class CreateWebhookDataWebhook(
                 createdAt = o.str("createdAt"),
                 week = o.req("week") { x, y -> CreateWebhookDataWebhookWeek.read(x, y) },
                 lastDelivered = o.strOrNull("lastDelivered"),
+                createdByKey = o.opt("createdByKey") { x, y -> CreateWebhookDataWebhookCreatedByKey.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -638,6 +670,24 @@ public class CreateWebhookDataWebhookWeek(
                 delivered = o.int("delivered"),
                 failed = o.int("failed"),
                 pending = o.int("pending"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182). */
+public class CreateWebhookDataWebhookCreatedByKey(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): CreateWebhookDataWebhookCreatedByKey {
+            val o = ObjectReader(v, path)
+            return CreateWebhookDataWebhookCreatedByKey(
+                id = o.str("id"),
+                name = o.str("name"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -675,6 +725,12 @@ public class GetWebhookData(
     public val week: GetWebhookDataWeek,
     /** Always present. */
     public val lastDelivered: String?,
+    /**
+     * Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182).
+     *
+     * Always present.
+     */
+    public val createdByKey: GetWebhookDataCreatedByKey?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): GetWebhookData {
@@ -689,6 +745,7 @@ public class GetWebhookData(
                 createdAt = o.str("createdAt"),
                 week = o.req("week") { x, y -> GetWebhookDataWeek.read(x, y) },
                 lastDelivered = o.strOrNull("lastDelivered"),
+                createdByKey = o.opt("createdByKey") { x, y -> GetWebhookDataCreatedByKey.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -710,6 +767,24 @@ public class GetWebhookDataWeek(
                 delivered = o.int("delivered"),
                 failed = o.int("failed"),
                 pending = o.int("pending"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182). */
+public class GetWebhookDataCreatedByKey(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetWebhookDataCreatedByKey {
+            val o = ObjectReader(v, path)
+            return GetWebhookDataCreatedByKey(
+                id = o.str("id"),
+                name = o.str("name"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -759,6 +834,12 @@ public class SetWebhookStatusData(
     public val week: SetWebhookStatusDataWeek,
     /** Always present. */
     public val lastDelivered: String?,
+    /**
+     * Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182).
+     *
+     * Always present.
+     */
+    public val createdByKey: SetWebhookStatusDataCreatedByKey?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): SetWebhookStatusData {
@@ -773,6 +854,7 @@ public class SetWebhookStatusData(
                 createdAt = o.str("createdAt"),
                 week = o.req("week") { x, y -> SetWebhookStatusDataWeek.read(x, y) },
                 lastDelivered = o.strOrNull("lastDelivered"),
+                createdByKey = o.opt("createdByKey") { x, y -> SetWebhookStatusDataCreatedByKey.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -794,6 +876,24 @@ public class SetWebhookStatusDataWeek(
                 delivered = o.int("delivered"),
                 failed = o.int("failed"),
                 pending = o.int("pending"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182). */
+public class SetWebhookStatusDataCreatedByKey(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetWebhookStatusDataCreatedByKey {
+            val o = ObjectReader(v, path)
+            return SetWebhookStatusDataCreatedByKey(
+                id = o.str("id"),
+                name = o.str("name"),
             ).also { it.adopt(o.rest()) }
         }
     }

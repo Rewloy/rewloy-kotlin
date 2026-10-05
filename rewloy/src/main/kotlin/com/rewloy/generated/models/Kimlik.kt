@@ -108,6 +108,12 @@ public class LoginDataBusinessesItem(
      * Always present.
      */
     public val testOf: String?,
+    /**
+     * İşletmenin para birimi (ISO 4217): satışların `amountMinor`'ı ve para kartlarının tutarları bu birimdedir (ADR 182)
+     *
+     * Always present.
+     */
+    public val currency: String,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): LoginDataBusinessesItem {
@@ -121,6 +127,7 @@ public class LoginDataBusinessesItem(
                 permissions = o.req("permissions") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
                 mode = o.str("mode"),
                 testOf = o.strOrNull("testOf"),
+                currency = o.str("currency"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -792,6 +799,12 @@ public class SignupDataBusinessesItem(
      * Always present.
      */
     public val testOf: String?,
+    /**
+     * İşletmenin para birimi (ISO 4217): satışların `amountMinor`'ı ve para kartlarının tutarları bu birimdedir (ADR 182)
+     *
+     * Always present.
+     */
+    public val currency: String,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): SignupDataBusinessesItem {
@@ -805,6 +818,7 @@ public class SignupDataBusinessesItem(
                 permissions = o.req("permissions") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
                 mode = o.str("mode"),
                 testOf = o.strOrNull("testOf"),
+                currency = o.str("currency"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -912,8 +926,6 @@ public class InvitePreviewData(
     public val merchantName: String,
     /** Always present. */
     public val email: String,
-    /** Always present. */
-    public val userExists: Boolean,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): InvitePreviewData {
@@ -921,7 +933,6 @@ public class InvitePreviewData(
             return InvitePreviewData(
                 merchantName = o.str("merchantName"),
                 email = o.str("email"),
-                userExists = o.bool("userExists"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -929,8 +940,8 @@ public class InvitePreviewData(
 
 /** The `AcceptInviteBody` object. */
 public class AcceptInviteBody(
-    /** Required. */
-    public var password: String,
+    /** Yalnız yeni hesap için: hesabın şifresi (en az 10 karakter) */
+    public var password: String? = null,
 ) : RewloyObject() {
     internal override fun toJsonValue(): JsonObject {
         val w = ObjectWriter()
@@ -1025,6 +1036,12 @@ public class AcceptInviteDataBusinessesItem(
      * Always present.
      */
     public val testOf: String?,
+    /**
+     * İşletmenin para birimi (ISO 4217): satışların `amountMinor`'ı ve para kartlarının tutarları bu birimdedir (ADR 182)
+     *
+     * Always present.
+     */
+    public val currency: String,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): AcceptInviteDataBusinessesItem {
@@ -1038,6 +1055,7 @@ public class AcceptInviteDataBusinessesItem(
                 permissions = o.req("permissions") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
                 mode = o.str("mode"),
                 testOf = o.strOrNull("testOf"),
+                currency = o.str("currency"),
             ).also { it.adopt(o.rest()) }
         }
     }

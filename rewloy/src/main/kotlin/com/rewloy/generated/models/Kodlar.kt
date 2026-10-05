@@ -48,8 +48,10 @@ public class ListBatchesItem(
 public class CreateBatchBody(
     /** Kodun adı (boşsa programın adı) */
     public var name: String? = null,
-    /** `valueMinor`. */
+    /** Programın para biriminde, kuruş */
     public var valueMinor: Int? = null,
+    /** İsteğe bağlı: tutarın para birimi (ISO 4217, ör. `TRY`, `EUR`, büyük-küçük harf önemsiz). Tutar **kartın para birimindedir** (programın para birimi: `GET /v1/passes/{serial}` → `currency`, `GET /v1/programs/{id}`); verilirse onunla karşılaştırılır, farklıysa `422 CURRENCY_MISMATCH` (`details.currency` kartınki) ve hiçbir şey yazılmaz. Tutar çevrilmez. */
+    public var currency: String? = null,
     /** One of: `once`, `limited`, `unlimited`. */
     public var usage: String? = null,
     /** `usageLimit`. */
@@ -64,6 +66,8 @@ public class CreateBatchBody(
     public var offerText: String? = null,
     /** `percent`. */
     public var percent: Int? = null,
+    /** `onlineValue`. */
+    public var onlineValue: CreateBatchBodyOnlineValue? = null,
     /** Kartların kasada kabul edileceği şubeler (ADR 139); boş ya da yok = programın kuralı. Şube kapsamlı bir kimlik yalnız kendi şubelerini seçebilir. */
     public var locationIds: List<String>? = null,
 ) : RewloyObject() {
@@ -71,6 +75,7 @@ public class CreateBatchBody(
         val w = ObjectWriter()
         w.str("name", this.name)
         w.int("valueMinor", this.valueMinor)
+        w.str("currency", this.currency)
         w.str("usage", this.usage)
         w.int("usageLimit", this.usageLimit)
         w.int("capacity", this.capacity)
@@ -78,7 +83,27 @@ public class CreateBatchBody(
         w.str("validUntil", this.validUntil)
         w.str("offerText", this.offerText)
         w.int("percent", this.percent)
+        w.obj("onlineValue", this.onlineValue)
         w.list("locationIds", this.locationIds) { e -> Out.str(e) }
+        return w.finish(extras())
+    }
+}
+
+/** The `CreateBatchBodyOnlineValue` object. */
+public class CreateBatchBodyOnlineValue(
+    /**
+     * One of: `amount`, `percent`.
+     *
+     * Required.
+     */
+    public var kind: String,
+    /** Required. */
+    public var value: Int,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.str("kind", this.kind)
+        w.int("value", this.value)
         return w.finish(extras())
     }
 }
@@ -181,6 +206,12 @@ public class CreateBatchData(
      * Always present.
      */
     public val outstandingMinor: Double,
+    /**
+     * Kupon: online mağazada kullanıldığındaki değeri (ADR 179); null = kodun tutarı, yoksa programın `onlineValue`'su, o da yoksa yalnız mağazada
+     *
+     * Always present.
+     */
+    public val onlineValue: CreateBatchDataOnlineValue?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): CreateBatchData {
@@ -210,6 +241,7 @@ public class CreateBatchData(
                 branchNames = o.req("branchNames") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
                 spentMinor = o.double("spentMinor"),
                 outstandingMinor = o.double("outstandingMinor"),
+                onlineValue = o.opt("onlineValue") { x, y -> CreateBatchDataOnlineValue.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -240,6 +272,28 @@ public class CreateBatchDataCards(
                 expired = o.int("expired"),
                 revoked = o.int("revoked"),
                 uses = o.int("uses"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kupon: online mağazada kullanıldığındaki değeri (ADR 179); null = kodun tutarı, yoksa programın `onlineValue`'su, o da yoksa yalnız mağazada */
+public class CreateBatchDataOnlineValue(
+    /**
+     * One of: `amount`, `percent`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /** Always present. */
+    public val value: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): CreateBatchDataOnlineValue {
+            val o = ObjectReader(v, path)
+            return CreateBatchDataOnlineValue(
+                kind = o.str("kind"),
+                value = o.int("value"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -343,6 +397,12 @@ public class GetBatchData(
      * Always present.
      */
     public val outstandingMinor: Double,
+    /**
+     * Kupon: online mağazada kullanıldığındaki değeri (ADR 179); null = kodun tutarı, yoksa programın `onlineValue`'su, o da yoksa yalnız mağazada
+     *
+     * Always present.
+     */
+    public val onlineValue: GetBatchDataOnlineValue?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): GetBatchData {
@@ -372,6 +432,7 @@ public class GetBatchData(
                 branchNames = o.req("branchNames") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
                 spentMinor = o.double("spentMinor"),
                 outstandingMinor = o.double("outstandingMinor"),
+                onlineValue = o.opt("onlineValue") { x, y -> GetBatchDataOnlineValue.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -402,6 +463,28 @@ public class GetBatchDataCards(
                 expired = o.int("expired"),
                 revoked = o.int("revoked"),
                 uses = o.int("uses"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kupon: online mağazada kullanıldığındaki değeri (ADR 179); null = kodun tutarı, yoksa programın `onlineValue`'su, o da yoksa yalnız mağazada */
+public class GetBatchDataOnlineValue(
+    /**
+     * One of: `amount`, `percent`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /** Always present. */
+    public val value: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetBatchDataOnlineValue {
+            val o = ObjectReader(v, path)
+            return GetBatchDataOnlineValue(
+                kind = o.str("kind"),
+                value = o.int("value"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -439,7 +522,7 @@ public class ListBatchCardsItem(
     /** Always present. */
     public val name: String,
     /**
-     * **Kullanımdan kalkıyor:** 5 Nisan 2027 tarihine kadar gelir; yerine `identifiers`. Kartı alanın adresi. Yerine geçen `identifiers` yalnız `customers.read` yetkisiyle gelir.
+     * **Kullanımdan kalkıyor:** 5 Nisan 2027 tarihine kadar gelir; yerine `identifiers`. Kartı alanın adresi; `identifiers` gibi yalnız `customers.read` yetkisiyle ve kimliğin şube kapsamındaki kişiler için gelir, yoksa null (ADR 181). Yerine geçen `identifiers`.
      *
      * Always present.
      */
@@ -643,6 +726,12 @@ public class CloseBatchData(
      * Always present.
      */
     public val outstandingMinor: Double,
+    /**
+     * Kupon: online mağazada kullanıldığındaki değeri (ADR 179); null = kodun tutarı, yoksa programın `onlineValue`'su, o da yoksa yalnız mağazada
+     *
+     * Always present.
+     */
+    public val onlineValue: CloseBatchDataOnlineValue?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): CloseBatchData {
@@ -672,6 +761,7 @@ public class CloseBatchData(
                 branchNames = o.req("branchNames") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
                 spentMinor = o.double("spentMinor"),
                 outstandingMinor = o.double("outstandingMinor"),
+                onlineValue = o.opt("onlineValue") { x, y -> CloseBatchDataOnlineValue.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -702,6 +792,28 @@ public class CloseBatchDataCards(
                 expired = o.int("expired"),
                 revoked = o.int("revoked"),
                 uses = o.int("uses"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kupon: online mağazada kullanıldığındaki değeri (ADR 179); null = kodun tutarı, yoksa programın `onlineValue`'su, o da yoksa yalnız mağazada */
+public class CloseBatchDataOnlineValue(
+    /**
+     * One of: `amount`, `percent`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /** Always present. */
+    public val value: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): CloseBatchDataOnlineValue {
+            val o = ObjectReader(v, path)
+            return CloseBatchDataOnlineValue(
+                kind = o.str("kind"),
+                value = o.int("value"),
             ).also { it.adopt(o.rest()) }
         }
     }

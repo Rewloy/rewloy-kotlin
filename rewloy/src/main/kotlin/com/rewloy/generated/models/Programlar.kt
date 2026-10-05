@@ -58,6 +58,12 @@ public class ListProgramsItem(
      * Always present.
      */
     public val stats: ListProgramsItemStats,
+    /**
+     * Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil.
+     *
+     * Always present.
+     */
+    public val sale: ListProgramsItemSale,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): ListProgramsItem {
@@ -71,6 +77,7 @@ public class ListProgramsItem(
                 joinUrl = o.strOrNull("joinUrl"),
                 artwork = o.req("artwork") { x, y -> ListProgramsItemArtwork.read(x, y) },
                 stats = o.req("stats") { x, y -> ListProgramsItemStats.read(x, y) },
+                sale = o.req("sale") { x, y -> ListProgramsItemSale.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -116,6 +123,48 @@ public class ListProgramsItemStats(
                 activeCards = o.int("activeCards"),
                 visits30 = o.int("visits30"),
                 rewardsReady = o.int("rewardsReady"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil. */
+public class ListProgramsItemSale(
+    /**
+     * Bir satışın (`POST /v1/passes/{serial}/sale`) bu programın kartlarına yazdığı
+     *
+     * One of: `stamps`, `points`, `visit`, `cashback`, `none`.
+     *
+     * Always present.
+     */
+    public val writes: String,
+    /**
+     * Damga ve VIP: satış başına damga ya da ziyaret
+     *
+     * Always present.
+     */
+    public val perSale: Int?,
+    /**
+     * Puan: her 1 birim harcamaya puan (`config.earnRate`)
+     *
+     * Always present.
+     */
+    public val pointsPerUnit: Int?,
+    /**
+     * Cashback: toplamın yüzdesi (`config.cashbackRate`)
+     *
+     * Always present.
+     */
+    public val percent: Int?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ListProgramsItemSale {
+            val o = ObjectReader(v, path)
+            return ListProgramsItemSale(
+                writes = o.str("writes"),
+                perSale = o.intOrNull("perSale"),
+                pointsPerUnit = o.intOrNull("pointsPerUnit"),
+                percent = o.intOrNull("percent"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -189,11 +238,18 @@ public class CreateProgramBody(
     public var cashbackRate: Int? = null,
     /** Kupon: teklif metni */
     public var offerText: String? = null,
+    /**
+     * Kupon: online mağazada kullanıldığında değeri (ADR 179). Yoksa (ya da null) kupon yalnız mağazada geçer; kodun kendi online değeri ya da tutarı bunun önüne geçer.
+     *
+     * An `OptionalField` tells a left-out field from an explicit `null`: `OptionalField.ofNull()` sends `null`.
+     */
+    public var onlineValue: OptionalField<CreateProgramBodyOnlineValue>? = null,
 ) : RewloyObject() {
     /** The required fields only; set the rest with the setters. */
     public constructor(type: String, businessName: String) : this(
         type,
         businessName,
+        null,
         null,
         null,
         null,
@@ -246,6 +302,7 @@ public class CreateProgramBody(
         w.list("tiers", this.tiers) { e -> Out.obj(e) }
         w.int("cashbackRate", this.cashbackRate)
         w.str("offerText", this.offerText)
+        w.optional("onlineValue", this.onlineValue) { e -> Out.obj(e) }
         return w.finish(extras())
     }
 }
@@ -419,6 +476,29 @@ public class CreateProgramBodyTiersItem(
     }
 }
 
+/** Kupon: online mağazada kullanıldığında değeri (ADR 179). Yoksa (ya da null) kupon yalnız mağazada geçer; kodun kendi online değeri ya da tutarı bunun önüne geçer. */
+public class CreateProgramBodyOnlineValue(
+    /**
+     * One of: `amount`, `percent`.
+     *
+     * Required.
+     */
+    public var kind: String,
+    /**
+     * amount: kuruş (100 – 10.000.000); percent: 1 – 100
+     *
+     * Required.
+     */
+    public var value: Int,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.str("kind", this.kind)
+        w.int("value", this.value)
+        return w.finish(extras())
+    }
+}
+
 /** The `CreateProgramData` object. */
 public class CreateProgramData(
     /** Always present. */
@@ -457,6 +537,12 @@ public class CreateProgramData(
      * Always present.
      */
     public val stats: CreateProgramDataStats,
+    /**
+     * Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil.
+     *
+     * Always present.
+     */
+    public val sale: CreateProgramDataSale,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): CreateProgramData {
@@ -470,6 +556,7 @@ public class CreateProgramData(
                 joinUrl = o.strOrNull("joinUrl"),
                 artwork = o.req("artwork") { x, y -> CreateProgramDataArtwork.read(x, y) },
                 stats = o.req("stats") { x, y -> CreateProgramDataStats.read(x, y) },
+                sale = o.req("sale") { x, y -> CreateProgramDataSale.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -515,6 +602,48 @@ public class CreateProgramDataStats(
                 activeCards = o.int("activeCards"),
                 visits30 = o.int("visits30"),
                 rewardsReady = o.int("rewardsReady"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil. */
+public class CreateProgramDataSale(
+    /**
+     * Bir satışın (`POST /v1/passes/{serial}/sale`) bu programın kartlarına yazdığı
+     *
+     * One of: `stamps`, `points`, `visit`, `cashback`, `none`.
+     *
+     * Always present.
+     */
+    public val writes: String,
+    /**
+     * Damga ve VIP: satış başına damga ya da ziyaret
+     *
+     * Always present.
+     */
+    public val perSale: Int?,
+    /**
+     * Puan: her 1 birim harcamaya puan (`config.earnRate`)
+     *
+     * Always present.
+     */
+    public val pointsPerUnit: Int?,
+    /**
+     * Cashback: toplamın yüzdesi (`config.cashbackRate`)
+     *
+     * Always present.
+     */
+    public val percent: Int?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): CreateProgramDataSale {
+            val o = ObjectReader(v, path)
+            return CreateProgramDataSale(
+                writes = o.str("writes"),
+                perSale = o.intOrNull("perSale"),
+                pointsPerUnit = o.intOrNull("pointsPerUnit"),
+                percent = o.intOrNull("percent"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -750,6 +879,12 @@ public class GetProgramData(
      * Always present.
      */
     public val stats: GetProgramDataStats,
+    /**
+     * Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil.
+     *
+     * Always present.
+     */
+    public val sale: GetProgramDataSale,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): GetProgramData {
@@ -763,6 +898,7 @@ public class GetProgramData(
                 joinUrl = o.strOrNull("joinUrl"),
                 artwork = o.req("artwork") { x, y -> GetProgramDataArtwork.read(x, y) },
                 stats = o.req("stats") { x, y -> GetProgramDataStats.read(x, y) },
+                sale = o.req("sale") { x, y -> GetProgramDataSale.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -808,6 +944,48 @@ public class GetProgramDataStats(
                 activeCards = o.int("activeCards"),
                 visits30 = o.int("visits30"),
                 rewardsReady = o.int("rewardsReady"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil. */
+public class GetProgramDataSale(
+    /**
+     * Bir satışın (`POST /v1/passes/{serial}/sale`) bu programın kartlarına yazdığı
+     *
+     * One of: `stamps`, `points`, `visit`, `cashback`, `none`.
+     *
+     * Always present.
+     */
+    public val writes: String,
+    /**
+     * Damga ve VIP: satış başına damga ya da ziyaret
+     *
+     * Always present.
+     */
+    public val perSale: Int?,
+    /**
+     * Puan: her 1 birim harcamaya puan (`config.earnRate`)
+     *
+     * Always present.
+     */
+    public val pointsPerUnit: Int?,
+    /**
+     * Cashback: toplamın yüzdesi (`config.cashbackRate`)
+     *
+     * Always present.
+     */
+    public val percent: Int?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetProgramDataSale {
+            val o = ObjectReader(v, path)
+            return GetProgramDataSale(
+                writes = o.str("writes"),
+                perSale = o.intOrNull("perSale"),
+                pointsPerUnit = o.intOrNull("pointsPerUnit"),
+                percent = o.intOrNull("percent"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -865,6 +1043,12 @@ public class UpdateProgramBody(
     public var cashbackRate: Int? = null,
     /** Kupon: teklif metni */
     public var offerText: String? = null,
+    /**
+     * Kupon: online mağazada kullanıldığında değeri (ADR 179). Yoksa (ya da null) kupon yalnız mağazada geçer; kodun kendi online değeri ya da tutarı bunun önüne geçer.
+     *
+     * An `OptionalField` tells a left-out field from an explicit `null`: `OptionalField.ofNull()` sends `null`.
+     */
+    public var onlineValue: OptionalField<UpdateProgramBodyOnlineValue>? = null,
 ) : RewloyObject() {
     internal override fun toJsonValue(): JsonObject {
         val w = ObjectWriter()
@@ -891,6 +1075,7 @@ public class UpdateProgramBody(
         w.list("tiers", this.tiers) { e -> Out.obj(e) }
         w.int("cashbackRate", this.cashbackRate)
         w.str("offerText", this.offerText)
+        w.optional("onlineValue", this.onlineValue) { e -> Out.obj(e) }
         return w.finish(extras())
     }
 }
@@ -1064,6 +1249,29 @@ public class UpdateProgramBodyTiersItem(
     }
 }
 
+/** Kupon: online mağazada kullanıldığında değeri (ADR 179). Yoksa (ya da null) kupon yalnız mağazada geçer; kodun kendi online değeri ya da tutarı bunun önüne geçer. */
+public class UpdateProgramBodyOnlineValue(
+    /**
+     * One of: `amount`, `percent`.
+     *
+     * Required.
+     */
+    public var kind: String,
+    /**
+     * amount: kuruş (100 – 10.000.000); percent: 1 – 100
+     *
+     * Required.
+     */
+    public var value: Int,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.str("kind", this.kind)
+        w.int("value", this.value)
+        return w.finish(extras())
+    }
+}
+
 /** The `UpdateProgramData` object. */
 public class UpdateProgramData(
     /** Always present. */
@@ -1102,6 +1310,12 @@ public class UpdateProgramData(
      * Always present.
      */
     public val stats: UpdateProgramDataStats,
+    /**
+     * Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil.
+     *
+     * Always present.
+     */
+    public val sale: UpdateProgramDataSale,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): UpdateProgramData {
@@ -1115,6 +1329,7 @@ public class UpdateProgramData(
                 joinUrl = o.strOrNull("joinUrl"),
                 artwork = o.req("artwork") { x, y -> UpdateProgramDataArtwork.read(x, y) },
                 stats = o.req("stats") { x, y -> UpdateProgramDataStats.read(x, y) },
+                sale = o.req("sale") { x, y -> UpdateProgramDataSale.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -1160,6 +1375,48 @@ public class UpdateProgramDataStats(
                 activeCards = o.int("activeCards"),
                 visits30 = o.int("visits30"),
                 rewardsReady = o.int("rewardsReady"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil. */
+public class UpdateProgramDataSale(
+    /**
+     * Bir satışın (`POST /v1/passes/{serial}/sale`) bu programın kartlarına yazdığı
+     *
+     * One of: `stamps`, `points`, `visit`, `cashback`, `none`.
+     *
+     * Always present.
+     */
+    public val writes: String,
+    /**
+     * Damga ve VIP: satış başına damga ya da ziyaret
+     *
+     * Always present.
+     */
+    public val perSale: Int?,
+    /**
+     * Puan: her 1 birim harcamaya puan (`config.earnRate`)
+     *
+     * Always present.
+     */
+    public val pointsPerUnit: Int?,
+    /**
+     * Cashback: toplamın yüzdesi (`config.cashbackRate`)
+     *
+     * Always present.
+     */
+    public val percent: Int?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): UpdateProgramDataSale {
+            val o = ObjectReader(v, path)
+            return UpdateProgramDataSale(
+                writes = o.str("writes"),
+                perSale = o.intOrNull("perSale"),
+                pointsPerUnit = o.intOrNull("pointsPerUnit"),
+                percent = o.intOrNull("percent"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -1272,11 +1529,18 @@ public class PreviewProgramBodyConfig(
     public var cashbackRate: Int? = null,
     /** Kupon: teklif metni */
     public var offerText: String? = null,
+    /**
+     * Kupon: online mağazada kullanıldığında değeri (ADR 179). Yoksa (ya da null) kupon yalnız mağazada geçer; kodun kendi online değeri ya da tutarı bunun önüne geçer.
+     *
+     * An `OptionalField` tells a left-out field from an explicit `null`: `OptionalField.ofNull()` sends `null`.
+     */
+    public var onlineValue: OptionalField<PreviewProgramBodyConfigOnlineValue>? = null,
 ) : RewloyObject() {
     /** The required fields only; set the rest with the setters. */
     public constructor(type: String, businessName: String) : this(
         type,
         businessName,
+        null,
         null,
         null,
         null,
@@ -1329,6 +1593,7 @@ public class PreviewProgramBodyConfig(
         w.list("tiers", this.tiers) { e -> Out.obj(e) }
         w.int("cashbackRate", this.cashbackRate)
         w.str("offerText", this.offerText)
+        w.optional("onlineValue", this.onlineValue) { e -> Out.obj(e) }
         return w.finish(extras())
     }
 }
@@ -1498,6 +1763,29 @@ public class PreviewProgramBodyConfigTiersItem(
         val w = ObjectWriter()
         w.str("name", this.name)
         w.int("visitsRequired", this.visitsRequired)
+        return w.finish(extras())
+    }
+}
+
+/** Kupon: online mağazada kullanıldığında değeri (ADR 179). Yoksa (ya da null) kupon yalnız mağazada geçer; kodun kendi online değeri ya da tutarı bunun önüne geçer. */
+public class PreviewProgramBodyConfigOnlineValue(
+    /**
+     * One of: `amount`, `percent`.
+     *
+     * Required.
+     */
+    public var kind: String,
+    /**
+     * amount: kuruş (100 – 10.000.000); percent: 1 – 100
+     *
+     * Required.
+     */
+    public var value: Int,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.str("kind", this.kind)
+        w.int("value", this.value)
         return w.finish(extras())
     }
 }

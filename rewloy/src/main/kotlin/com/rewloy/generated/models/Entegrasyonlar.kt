@@ -224,11 +224,31 @@ public class ListShopsItem(
      */
     public val lastRefusal: ListShopsItemLastRefusal?,
     /**
-     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.
+     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.
      *
      * Always present.
      */
     public val pluginKey: ListShopsItemPluginKey?,
+    /**
+     * Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.
+     *
+     * Always present.
+     */
+    public val shopName: String?,
+    /**
+     * Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.
+     *
+     * Always present.
+     */
+    public val settings: ListShopsItemSettings,
+    /** Always present. */
+    public val accepts: ListShopsItemAccepts,
+    /**
+     * Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).
+     *
+     * Always present.
+     */
+    public val unbacked: ListShopsItemUnbacked,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): ListShopsItem {
@@ -251,6 +271,10 @@ public class ListShopsItem(
                 lastDelivery = o.opt("lastDelivery") { x, y -> ListShopsItemLastDelivery.read(x, y) },
                 lastRefusal = o.opt("lastRefusal") { x, y -> ListShopsItemLastRefusal.read(x, y) },
                 pluginKey = o.opt("pluginKey") { x, y -> ListShopsItemPluginKey.read(x, y) },
+                shopName = o.strOrNull("shopName"),
+                settings = o.req("settings") { x, y -> ListShopsItemSettings.read(x, y) },
+                accepts = o.req("accepts") { x, y -> ListShopsItemAccepts.read(x, y) },
+                unbacked = o.req("unbacked") { x, y -> ListShopsItemUnbacked.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -288,7 +312,7 @@ public class ListShopsItemLastDelivery(
     /** Always present. */
     public val at: String,
     /**
-     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`.
+     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.
      *
      * Always present.
      */
@@ -327,7 +351,7 @@ public class ListShopsItemLastRefusal(
     }
 }
 
-/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir. */
+/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir. */
 public class ListShopsItemPluginKey(
     /** Always present. */
     public val id: String,
@@ -335,6 +359,30 @@ public class ListShopsItemPluginKey(
     public val prefix: String,
     /** Always present. */
     public val name: String,
+    /**
+     * Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)
+     *
+     * Always present.
+     */
+    public val abilities: List<String>,
+    /**
+     * Kasa açıksa şubesi; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationId: String?,
+    /**
+     * Kasanın şubesinin adı; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationName: String?,
+    /**
+     * Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar
+     *
+     * Always present.
+     */
+    public val tillArchived: Boolean,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): ListShopsItemPluginKey {
@@ -343,6 +391,153 @@ public class ListShopsItemPluginKey(
                 id = o.str("id"),
                 prefix = o.str("prefix"),
                 name = o.str("name"),
+                abilities = o.req("abilities") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                tillLocationId = o.strOrNull("tillLocationId"),
+                tillLocationName = o.strOrNull("tillLocationName"),
+                tillArchived = o.bool("tillArchived"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir. */
+public class ListShopsItemSettings(
+    /**
+     * Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.
+     *
+     * Always present.
+     */
+    public val tax: ListShopsItemSettingsTax,
+    /**
+     * İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.
+     *
+     * One of: `code_orders`, `all`, `never`.
+     *
+     * Always present.
+     */
+    public val refundReverses: String,
+    /**
+     * Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)
+     *
+     * Always present.
+     */
+    public val holdDays: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ListShopsItemSettings {
+            val o = ObjectReader(v, path)
+            return ListShopsItemSettings(
+                tax = o.req("tax") { x, y -> ListShopsItemSettingsTax.read(x, y) },
+                refundReverses = o.str("refundReverses"),
+                holdDays = o.int("holdDays"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır. */
+public class ListShopsItemSettingsTax(
+    /**
+     * Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val giftcard: String,
+    /**
+     * Cashback: `discount` (varsayılan) ya da `payment`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val cashback: String,
+    /**
+     * Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val voucher: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ListShopsItemSettingsTax {
+            val o = ObjectReader(v, path)
+            return ListShopsItemSettingsTax(
+                giftcard = o.str("giftcard"),
+                cashback = o.str("cashback"),
+                voucher = o.str("voucher"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `ListShopsItemAccepts` object. */
+public class ListShopsItemAccepts(
+    /**
+     * İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.
+     *
+     * Always present.
+     */
+    public val programIds: List<String>,
+    /**
+     * Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.
+     *
+     * Always present.
+     */
+    public val ceiling: List<ListShopsItemAcceptsCeilingItem>?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ListShopsItemAccepts {
+            val o = ObjectReader(v, path)
+            return ListShopsItemAccepts(
+                programIds = o.req("programIds") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                ceiling = o.opt("ceiling") { x, y -> Wire.list(x, y) { v1, p1 -> ListShopsItemAcceptsCeilingItem.read(v1, p1) } },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `ListShopsItemAcceptsCeilingItem` object. */
+public class ListShopsItemAcceptsCeilingItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ListShopsItemAcceptsCeilingItem {
+            val o = ObjectReader(v, path)
+            return ListShopsItemAcceptsCeilingItem(
+                id = o.str("id"),
+                name = o.str("name"),
+                type = o.str("type"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`). */
+public class ListShopsItemUnbacked(
+    /** Always present. */
+    public val count: Int,
+    /** Always present. */
+    public val lastAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ListShopsItemUnbacked {
+            val o = ObjectReader(v, path)
+            return ListShopsItemUnbacked(
+                count = o.int("count"),
+                lastAt = o.strOrNull("lastAt"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -458,11 +653,31 @@ public class CreateShopData(
      */
     public val lastRefusal: CreateShopDataLastRefusal?,
     /**
-     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.
+     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.
      *
      * Always present.
      */
     public val pluginKey: CreateShopDataPluginKey?,
+    /**
+     * Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.
+     *
+     * Always present.
+     */
+    public val shopName: String?,
+    /**
+     * Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.
+     *
+     * Always present.
+     */
+    public val settings: CreateShopDataSettings,
+    /** Always present. */
+    public val accepts: CreateShopDataAccepts,
+    /**
+     * Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).
+     *
+     * Always present.
+     */
+    public val unbacked: CreateShopDataUnbacked,
     /**
      * WooCommerce: yalnız bu yanıtta; saklanmaz, yeniden gösterilmez
      *
@@ -491,6 +706,10 @@ public class CreateShopData(
                 lastDelivery = o.opt("lastDelivery") { x, y -> CreateShopDataLastDelivery.read(x, y) },
                 lastRefusal = o.opt("lastRefusal") { x, y -> CreateShopDataLastRefusal.read(x, y) },
                 pluginKey = o.opt("pluginKey") { x, y -> CreateShopDataPluginKey.read(x, y) },
+                shopName = o.strOrNull("shopName"),
+                settings = o.req("settings") { x, y -> CreateShopDataSettings.read(x, y) },
+                accepts = o.req("accepts") { x, y -> CreateShopDataAccepts.read(x, y) },
+                unbacked = o.req("unbacked") { x, y -> CreateShopDataUnbacked.read(x, y) },
                 secret = o.strOrNull("secret"),
             ).also { it.adopt(o.rest()) }
         }
@@ -529,7 +748,7 @@ public class CreateShopDataLastDelivery(
     /** Always present. */
     public val at: String,
     /**
-     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`.
+     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.
      *
      * Always present.
      */
@@ -568,7 +787,7 @@ public class CreateShopDataLastRefusal(
     }
 }
 
-/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir. */
+/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir. */
 public class CreateShopDataPluginKey(
     /** Always present. */
     public val id: String,
@@ -576,6 +795,30 @@ public class CreateShopDataPluginKey(
     public val prefix: String,
     /** Always present. */
     public val name: String,
+    /**
+     * Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)
+     *
+     * Always present.
+     */
+    public val abilities: List<String>,
+    /**
+     * Kasa açıksa şubesi; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationId: String?,
+    /**
+     * Kasanın şubesinin adı; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationName: String?,
+    /**
+     * Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar
+     *
+     * Always present.
+     */
+    public val tillArchived: Boolean,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): CreateShopDataPluginKey {
@@ -584,6 +827,153 @@ public class CreateShopDataPluginKey(
                 id = o.str("id"),
                 prefix = o.str("prefix"),
                 name = o.str("name"),
+                abilities = o.req("abilities") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                tillLocationId = o.strOrNull("tillLocationId"),
+                tillLocationName = o.strOrNull("tillLocationName"),
+                tillArchived = o.bool("tillArchived"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir. */
+public class CreateShopDataSettings(
+    /**
+     * Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.
+     *
+     * Always present.
+     */
+    public val tax: CreateShopDataSettingsTax,
+    /**
+     * İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.
+     *
+     * One of: `code_orders`, `all`, `never`.
+     *
+     * Always present.
+     */
+    public val refundReverses: String,
+    /**
+     * Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)
+     *
+     * Always present.
+     */
+    public val holdDays: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): CreateShopDataSettings {
+            val o = ObjectReader(v, path)
+            return CreateShopDataSettings(
+                tax = o.req("tax") { x, y -> CreateShopDataSettingsTax.read(x, y) },
+                refundReverses = o.str("refundReverses"),
+                holdDays = o.int("holdDays"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır. */
+public class CreateShopDataSettingsTax(
+    /**
+     * Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val giftcard: String,
+    /**
+     * Cashback: `discount` (varsayılan) ya da `payment`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val cashback: String,
+    /**
+     * Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val voucher: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): CreateShopDataSettingsTax {
+            val o = ObjectReader(v, path)
+            return CreateShopDataSettingsTax(
+                giftcard = o.str("giftcard"),
+                cashback = o.str("cashback"),
+                voucher = o.str("voucher"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `CreateShopDataAccepts` object. */
+public class CreateShopDataAccepts(
+    /**
+     * İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.
+     *
+     * Always present.
+     */
+    public val programIds: List<String>,
+    /**
+     * Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.
+     *
+     * Always present.
+     */
+    public val ceiling: List<CreateShopDataAcceptsCeilingItem>?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): CreateShopDataAccepts {
+            val o = ObjectReader(v, path)
+            return CreateShopDataAccepts(
+                programIds = o.req("programIds") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                ceiling = o.opt("ceiling") { x, y -> Wire.list(x, y) { v1, p1 -> CreateShopDataAcceptsCeilingItem.read(v1, p1) } },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `CreateShopDataAcceptsCeilingItem` object. */
+public class CreateShopDataAcceptsCeilingItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): CreateShopDataAcceptsCeilingItem {
+            val o = ObjectReader(v, path)
+            return CreateShopDataAcceptsCeilingItem(
+                id = o.str("id"),
+                name = o.str("name"),
+                type = o.str("type"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`). */
+public class CreateShopDataUnbacked(
+    /** Always present. */
+    public val count: Int,
+    /** Always present. */
+    public val lastAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): CreateShopDataUnbacked {
+            val o = ObjectReader(v, path)
+            return CreateShopDataUnbacked(
+                count = o.int("count"),
+                lastAt = o.strOrNull("lastAt"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -654,11 +1044,31 @@ public class GetShopData(
      */
     public val lastRefusal: GetShopDataLastRefusal?,
     /**
-     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.
+     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.
      *
      * Always present.
      */
     public val pluginKey: GetShopDataPluginKey?,
+    /**
+     * Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.
+     *
+     * Always present.
+     */
+    public val shopName: String?,
+    /**
+     * Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.
+     *
+     * Always present.
+     */
+    public val settings: GetShopDataSettings,
+    /** Always present. */
+    public val accepts: GetShopDataAccepts,
+    /**
+     * Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).
+     *
+     * Always present.
+     */
+    public val unbacked: GetShopDataUnbacked,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): GetShopData {
@@ -681,6 +1091,10 @@ public class GetShopData(
                 lastDelivery = o.opt("lastDelivery") { x, y -> GetShopDataLastDelivery.read(x, y) },
                 lastRefusal = o.opt("lastRefusal") { x, y -> GetShopDataLastRefusal.read(x, y) },
                 pluginKey = o.opt("pluginKey") { x, y -> GetShopDataPluginKey.read(x, y) },
+                shopName = o.strOrNull("shopName"),
+                settings = o.req("settings") { x, y -> GetShopDataSettings.read(x, y) },
+                accepts = o.req("accepts") { x, y -> GetShopDataAccepts.read(x, y) },
+                unbacked = o.req("unbacked") { x, y -> GetShopDataUnbacked.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -718,7 +1132,7 @@ public class GetShopDataLastDelivery(
     /** Always present. */
     public val at: String,
     /**
-     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`.
+     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.
      *
      * Always present.
      */
@@ -757,7 +1171,7 @@ public class GetShopDataLastRefusal(
     }
 }
 
-/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir. */
+/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir. */
 public class GetShopDataPluginKey(
     /** Always present. */
     public val id: String,
@@ -765,6 +1179,30 @@ public class GetShopDataPluginKey(
     public val prefix: String,
     /** Always present. */
     public val name: String,
+    /**
+     * Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)
+     *
+     * Always present.
+     */
+    public val abilities: List<String>,
+    /**
+     * Kasa açıksa şubesi; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationId: String?,
+    /**
+     * Kasanın şubesinin adı; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationName: String?,
+    /**
+     * Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar
+     *
+     * Always present.
+     */
+    public val tillArchived: Boolean,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): GetShopDataPluginKey {
@@ -773,6 +1211,153 @@ public class GetShopDataPluginKey(
                 id = o.str("id"),
                 prefix = o.str("prefix"),
                 name = o.str("name"),
+                abilities = o.req("abilities") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                tillLocationId = o.strOrNull("tillLocationId"),
+                tillLocationName = o.strOrNull("tillLocationName"),
+                tillArchived = o.bool("tillArchived"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir. */
+public class GetShopDataSettings(
+    /**
+     * Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.
+     *
+     * Always present.
+     */
+    public val tax: GetShopDataSettingsTax,
+    /**
+     * İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.
+     *
+     * One of: `code_orders`, `all`, `never`.
+     *
+     * Always present.
+     */
+    public val refundReverses: String,
+    /**
+     * Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)
+     *
+     * Always present.
+     */
+    public val holdDays: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetShopDataSettings {
+            val o = ObjectReader(v, path)
+            return GetShopDataSettings(
+                tax = o.req("tax") { x, y -> GetShopDataSettingsTax.read(x, y) },
+                refundReverses = o.str("refundReverses"),
+                holdDays = o.int("holdDays"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır. */
+public class GetShopDataSettingsTax(
+    /**
+     * Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val giftcard: String,
+    /**
+     * Cashback: `discount` (varsayılan) ya da `payment`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val cashback: String,
+    /**
+     * Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val voucher: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetShopDataSettingsTax {
+            val o = ObjectReader(v, path)
+            return GetShopDataSettingsTax(
+                giftcard = o.str("giftcard"),
+                cashback = o.str("cashback"),
+                voucher = o.str("voucher"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `GetShopDataAccepts` object. */
+public class GetShopDataAccepts(
+    /**
+     * İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.
+     *
+     * Always present.
+     */
+    public val programIds: List<String>,
+    /**
+     * Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.
+     *
+     * Always present.
+     */
+    public val ceiling: List<GetShopDataAcceptsCeilingItem>?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetShopDataAccepts {
+            val o = ObjectReader(v, path)
+            return GetShopDataAccepts(
+                programIds = o.req("programIds") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                ceiling = o.opt("ceiling") { x, y -> Wire.list(x, y) { v1, p1 -> GetShopDataAcceptsCeilingItem.read(v1, p1) } },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `GetShopDataAcceptsCeilingItem` object. */
+public class GetShopDataAcceptsCeilingItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetShopDataAcceptsCeilingItem {
+            val o = ObjectReader(v, path)
+            return GetShopDataAcceptsCeilingItem(
+                id = o.str("id"),
+                name = o.str("name"),
+                type = o.str("type"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`). */
+public class GetShopDataUnbacked(
+    /** Always present. */
+    public val count: Int,
+    /** Always present. */
+    public val lastAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): GetShopDataUnbacked {
+            val o = ObjectReader(v, path)
+            return GetShopDataUnbacked(
+                count = o.int("count"),
+                lastAt = o.strOrNull("lastAt"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -855,11 +1440,31 @@ public class SetShopEnabledData(
      */
     public val lastRefusal: SetShopEnabledDataLastRefusal?,
     /**
-     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.
+     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.
      *
      * Always present.
      */
     public val pluginKey: SetShopEnabledDataPluginKey?,
+    /**
+     * Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.
+     *
+     * Always present.
+     */
+    public val shopName: String?,
+    /**
+     * Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.
+     *
+     * Always present.
+     */
+    public val settings: SetShopEnabledDataSettings,
+    /** Always present. */
+    public val accepts: SetShopEnabledDataAccepts,
+    /**
+     * Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).
+     *
+     * Always present.
+     */
+    public val unbacked: SetShopEnabledDataUnbacked,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): SetShopEnabledData {
@@ -882,6 +1487,10 @@ public class SetShopEnabledData(
                 lastDelivery = o.opt("lastDelivery") { x, y -> SetShopEnabledDataLastDelivery.read(x, y) },
                 lastRefusal = o.opt("lastRefusal") { x, y -> SetShopEnabledDataLastRefusal.read(x, y) },
                 pluginKey = o.opt("pluginKey") { x, y -> SetShopEnabledDataPluginKey.read(x, y) },
+                shopName = o.strOrNull("shopName"),
+                settings = o.req("settings") { x, y -> SetShopEnabledDataSettings.read(x, y) },
+                accepts = o.req("accepts") { x, y -> SetShopEnabledDataAccepts.read(x, y) },
+                unbacked = o.req("unbacked") { x, y -> SetShopEnabledDataUnbacked.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -919,7 +1528,7 @@ public class SetShopEnabledDataLastDelivery(
     /** Always present. */
     public val at: String,
     /**
-     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`.
+     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.
      *
      * Always present.
      */
@@ -958,7 +1567,7 @@ public class SetShopEnabledDataLastRefusal(
     }
 }
 
-/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir. */
+/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir. */
 public class SetShopEnabledDataPluginKey(
     /** Always present. */
     public val id: String,
@@ -966,6 +1575,30 @@ public class SetShopEnabledDataPluginKey(
     public val prefix: String,
     /** Always present. */
     public val name: String,
+    /**
+     * Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)
+     *
+     * Always present.
+     */
+    public val abilities: List<String>,
+    /**
+     * Kasa açıksa şubesi; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationId: String?,
+    /**
+     * Kasanın şubesinin adı; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationName: String?,
+    /**
+     * Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar
+     *
+     * Always present.
+     */
+    public val tillArchived: Boolean,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): SetShopEnabledDataPluginKey {
@@ -974,6 +1607,153 @@ public class SetShopEnabledDataPluginKey(
                 id = o.str("id"),
                 prefix = o.str("prefix"),
                 name = o.str("name"),
+                abilities = o.req("abilities") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                tillLocationId = o.strOrNull("tillLocationId"),
+                tillLocationName = o.strOrNull("tillLocationName"),
+                tillArchived = o.bool("tillArchived"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir. */
+public class SetShopEnabledDataSettings(
+    /**
+     * Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.
+     *
+     * Always present.
+     */
+    public val tax: SetShopEnabledDataSettingsTax,
+    /**
+     * İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.
+     *
+     * One of: `code_orders`, `all`, `never`.
+     *
+     * Always present.
+     */
+    public val refundReverses: String,
+    /**
+     * Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)
+     *
+     * Always present.
+     */
+    public val holdDays: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopEnabledDataSettings {
+            val o = ObjectReader(v, path)
+            return SetShopEnabledDataSettings(
+                tax = o.req("tax") { x, y -> SetShopEnabledDataSettingsTax.read(x, y) },
+                refundReverses = o.str("refundReverses"),
+                holdDays = o.int("holdDays"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır. */
+public class SetShopEnabledDataSettingsTax(
+    /**
+     * Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val giftcard: String,
+    /**
+     * Cashback: `discount` (varsayılan) ya da `payment`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val cashback: String,
+    /**
+     * Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val voucher: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopEnabledDataSettingsTax {
+            val o = ObjectReader(v, path)
+            return SetShopEnabledDataSettingsTax(
+                giftcard = o.str("giftcard"),
+                cashback = o.str("cashback"),
+                voucher = o.str("voucher"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `SetShopEnabledDataAccepts` object. */
+public class SetShopEnabledDataAccepts(
+    /**
+     * İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.
+     *
+     * Always present.
+     */
+    public val programIds: List<String>,
+    /**
+     * Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.
+     *
+     * Always present.
+     */
+    public val ceiling: List<SetShopEnabledDataAcceptsCeilingItem>?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopEnabledDataAccepts {
+            val o = ObjectReader(v, path)
+            return SetShopEnabledDataAccepts(
+                programIds = o.req("programIds") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                ceiling = o.opt("ceiling") { x, y -> Wire.list(x, y) { v1, p1 -> SetShopEnabledDataAcceptsCeilingItem.read(v1, p1) } },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `SetShopEnabledDataAcceptsCeilingItem` object. */
+public class SetShopEnabledDataAcceptsCeilingItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopEnabledDataAcceptsCeilingItem {
+            val o = ObjectReader(v, path)
+            return SetShopEnabledDataAcceptsCeilingItem(
+                id = o.str("id"),
+                name = o.str("name"),
+                type = o.str("type"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`). */
+public class SetShopEnabledDataUnbacked(
+    /** Always present. */
+    public val count: Int,
+    /** Always present. */
+    public val lastAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopEnabledDataUnbacked {
+            val o = ObjectReader(v, path)
+            return SetShopEnabledDataUnbacked(
+                count = o.int("count"),
+                lastAt = o.strOrNull("lastAt"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -1055,6 +1835,24 @@ public class ListShopConnectTokensItem(
      * Always present.
      */
     public val createdBy: String?,
+    /**
+     * Kurulacak anahtar Görüntüleme yetkisini alır mı (ADR 178)
+     *
+     * Always present.
+     */
+    public val view: Boolean,
+    /**
+     * Kurulacak anahtarın kasası bu şubede açılır; null = kasa kapalı (ADR 178)
+     *
+     * Always present.
+     */
+    public val tillLocationId: String?,
+    /**
+     * Kasanın şubesinin adı
+     *
+     * Always present.
+     */
+    public val tillLocationName: String?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): ListShopConnectTokensItem {
@@ -1069,6 +1867,9 @@ public class ListShopConnectTokensItem(
                 createdAt = o.str("createdAt"),
                 expiresAt = o.str("expiresAt"),
                 createdBy = o.strOrNull("createdBy"),
+                view = o.bool("view"),
+                tillLocationId = o.strOrNull("tillLocationId"),
+                tillLocationName = o.strOrNull("tillLocationName"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -1090,12 +1891,22 @@ public class CreateShopConnectTokenBody(
     public var perAmountMinor: Int? = null,
     /** `step`. */
     public var step: Int? = null,
+    /** Görüntüleme: kartlar, durumları, programın sayıları ve son işlemleri. Gönderilmezse kapalı (ADR 178'in incelemesi): eski istemcinin anahtarı eskisi gibi kalır */
+    public var view: Boolean? = null,
+    /**
+     * Kasa: bu şubenin kasası; gönderilmezse ya da null ise kasa kapalı
+     *
+     * An `OptionalField` tells a left-out field from an explicit `null`: `OptionalField.ofNull()` sends `null`.
+     */
+    public var tillLocationId: OptionalField<String>? = null,
 ) : RewloyObject() {
     /** The required fields only; set the rest with the setters. */
     public constructor(programId: String, rule: String, password: String) : this(
         programId,
         rule,
         password,
+        null,
+        null,
         null,
         null,
     )
@@ -1107,6 +1918,8 @@ public class CreateShopConnectTokenBody(
         w.int("perAmountMinor", this.perAmountMinor)
         w.int("step", this.step)
         w.str("password", this.password)
+        w.bool("view", this.view)
+        w.optional("tillLocationId", this.tillLocationId) { e -> Out.str(e) }
         return w.finish(extras())
     }
 }
@@ -1140,6 +1953,24 @@ public class CreateShopConnectTokenData(
      */
     public val createdBy: String?,
     /**
+     * Kurulacak anahtar Görüntüleme yetkisini alır mı (ADR 178)
+     *
+     * Always present.
+     */
+    public val view: Boolean,
+    /**
+     * Kurulacak anahtarın kasası bu şubede açılır; null = kasa kapalı (ADR 178)
+     *
+     * Always present.
+     */
+    public val tillLocationId: String?,
+    /**
+     * Kasanın şubesinin adı
+     *
+     * Always present.
+     */
+    public val tillLocationName: String?,
+    /**
      * Eklentiye yapıştırılacak kod: yalnız bu yanıtta; saklanmaz, yeniden gösterilmez.
      *
      * Always present.
@@ -1159,6 +1990,9 @@ public class CreateShopConnectTokenData(
                 createdAt = o.str("createdAt"),
                 expiresAt = o.str("expiresAt"),
                 createdBy = o.strOrNull("createdBy"),
+                view = o.bool("view"),
+                tillLocationId = o.strOrNull("tillLocationId"),
+                tillLocationName = o.strOrNull("tillLocationName"),
                 token = o.str("token"),
             ).also { it.adopt(o.rest()) }
         }
@@ -1283,11 +2117,31 @@ public class ConnectShopDataShop(
      */
     public val lastRefusal: ConnectShopDataShopLastRefusal?,
     /**
-     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.
+     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.
      *
      * Always present.
      */
     public val pluginKey: ConnectShopDataShopPluginKey?,
+    /**
+     * Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.
+     *
+     * Always present.
+     */
+    public val shopName: String?,
+    /**
+     * Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.
+     *
+     * Always present.
+     */
+    public val settings: ConnectShopDataShopSettings,
+    /** Always present. */
+    public val accepts: ConnectShopDataShopAccepts,
+    /**
+     * Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).
+     *
+     * Always present.
+     */
+    public val unbacked: ConnectShopDataShopUnbacked,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): ConnectShopDataShop {
@@ -1310,6 +2164,10 @@ public class ConnectShopDataShop(
                 lastDelivery = o.opt("lastDelivery") { x, y -> ConnectShopDataShopLastDelivery.read(x, y) },
                 lastRefusal = o.opt("lastRefusal") { x, y -> ConnectShopDataShopLastRefusal.read(x, y) },
                 pluginKey = o.opt("pluginKey") { x, y -> ConnectShopDataShopPluginKey.read(x, y) },
+                shopName = o.strOrNull("shopName"),
+                settings = o.req("settings") { x, y -> ConnectShopDataShopSettings.read(x, y) },
+                accepts = o.req("accepts") { x, y -> ConnectShopDataShopAccepts.read(x, y) },
+                unbacked = o.req("unbacked") { x, y -> ConnectShopDataShopUnbacked.read(x, y) },
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -1347,7 +2205,7 @@ public class ConnectShopDataShopLastDelivery(
     /** Always present. */
     public val at: String,
     /**
-     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`.
+     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.
      *
      * Always present.
      */
@@ -1386,7 +2244,7 @@ public class ConnectShopDataShopLastRefusal(
     }
 }
 
-/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir. */
+/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir. */
 public class ConnectShopDataShopPluginKey(
     /** Always present. */
     public val id: String,
@@ -1394,6 +2252,30 @@ public class ConnectShopDataShopPluginKey(
     public val prefix: String,
     /** Always present. */
     public val name: String,
+    /**
+     * Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)
+     *
+     * Always present.
+     */
+    public val abilities: List<String>,
+    /**
+     * Kasa açıksa şubesi; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationId: String?,
+    /**
+     * Kasanın şubesinin adı; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationName: String?,
+    /**
+     * Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar
+     *
+     * Always present.
+     */
+    public val tillArchived: Boolean,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): ConnectShopDataShopPluginKey {
@@ -1402,6 +2284,153 @@ public class ConnectShopDataShopPluginKey(
                 id = o.str("id"),
                 prefix = o.str("prefix"),
                 name = o.str("name"),
+                abilities = o.req("abilities") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                tillLocationId = o.strOrNull("tillLocationId"),
+                tillLocationName = o.strOrNull("tillLocationName"),
+                tillArchived = o.bool("tillArchived"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir. */
+public class ConnectShopDataShopSettings(
+    /**
+     * Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.
+     *
+     * Always present.
+     */
+    public val tax: ConnectShopDataShopSettingsTax,
+    /**
+     * İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.
+     *
+     * One of: `code_orders`, `all`, `never`.
+     *
+     * Always present.
+     */
+    public val refundReverses: String,
+    /**
+     * Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)
+     *
+     * Always present.
+     */
+    public val holdDays: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ConnectShopDataShopSettings {
+            val o = ObjectReader(v, path)
+            return ConnectShopDataShopSettings(
+                tax = o.req("tax") { x, y -> ConnectShopDataShopSettingsTax.read(x, y) },
+                refundReverses = o.str("refundReverses"),
+                holdDays = o.int("holdDays"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır. */
+public class ConnectShopDataShopSettingsTax(
+    /**
+     * Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val giftcard: String,
+    /**
+     * Cashback: `discount` (varsayılan) ya da `payment`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val cashback: String,
+    /**
+     * Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val voucher: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ConnectShopDataShopSettingsTax {
+            val o = ObjectReader(v, path)
+            return ConnectShopDataShopSettingsTax(
+                giftcard = o.str("giftcard"),
+                cashback = o.str("cashback"),
+                voucher = o.str("voucher"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `ConnectShopDataShopAccepts` object. */
+public class ConnectShopDataShopAccepts(
+    /**
+     * İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.
+     *
+     * Always present.
+     */
+    public val programIds: List<String>,
+    /**
+     * Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.
+     *
+     * Always present.
+     */
+    public val ceiling: List<ConnectShopDataShopAcceptsCeilingItem>?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ConnectShopDataShopAccepts {
+            val o = ObjectReader(v, path)
+            return ConnectShopDataShopAccepts(
+                programIds = o.req("programIds") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                ceiling = o.opt("ceiling") { x, y -> Wire.list(x, y) { v1, p1 -> ConnectShopDataShopAcceptsCeilingItem.read(v1, p1) } },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `ConnectShopDataShopAcceptsCeilingItem` object. */
+public class ConnectShopDataShopAcceptsCeilingItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ConnectShopDataShopAcceptsCeilingItem {
+            val o = ObjectReader(v, path)
+            return ConnectShopDataShopAcceptsCeilingItem(
+                id = o.str("id"),
+                name = o.str("name"),
+                type = o.str("type"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`). */
+public class ConnectShopDataShopUnbacked(
+    /** Always present. */
+    public val count: Int,
+    /** Always present. */
+    public val lastAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ConnectShopDataShopUnbacked {
+            val o = ObjectReader(v, path)
+            return ConnectShopDataShopUnbacked(
+                count = o.int("count"),
+                lastAt = o.strOrNull("lastAt"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -1423,6 +2452,18 @@ public class ConnectShopDataApiKey(
      * Always present.
      */
     public val token: String,
+    /**
+     * Kodu alan kişinin seçtiği yetkiler (ADR 178): `view`, `till`
+     *
+     * Always present.
+     */
+    public val abilities: List<String>,
+    /**
+     * Kasa açıksa şubesi (işlemlerde `locationId`); değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationId: String?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): ConnectShopDataApiKey {
@@ -1433,6 +2474,2700 @@ public class ConnectShopDataApiKey(
                 name = o.str("name"),
                 role = o.str("role"),
                 token = o.str("token"),
+                abilities = o.req("abilities") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                tillLocationId = o.strOrNull("tillLocationId"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `SetShopPluginAbilitiesBody` object. */
+public class SetShopPluginAbilitiesBody(
+    /** Required. */
+    public var view: Boolean,
+    /**
+     * Kasanın şubesi; null = kasa kapalı
+     *
+     * Required.
+     *
+     * An `OptionalField` tells a left-out field from an explicit `null`: `OptionalField.ofNull()` sends `null`.
+     */
+    public var tillLocationId: OptionalField<String>,
+    /**
+     * Neden (yalnız ekibiniz görür)
+     *
+     * Required.
+     */
+    public var reason: String,
+    /** Required. */
+    public var password: String,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.bool("view", this.view)
+        w.optional("tillLocationId", this.tillLocationId) { e -> Out.str(e) }
+        w.str("reason", this.reason)
+        w.str("password", this.password)
+        return w.finish(extras())
+    }
+}
+
+/** The `SetShopPluginAbilitiesData` object. */
+public class SetShopPluginAbilitiesData(
+    /** Always present. */
+    public val id: String,
+    /**
+     * One of: `shopify`, `woocommerce`.
+     *
+     * Always present.
+     */
+    public val platform: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /** Always present. */
+    public val programType: String,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * order: her sipariş · amount: her `perAmountMinor` tutar için
+     *
+     * One of: `order`, `amount`.
+     *
+     * Always present.
+     */
+    public val rule: String,
+    /** Always present. */
+    public val perAmountMinor: Long,
+    /**
+     * Her seferinde eklenen damga/puan/ziyaret (cashback kartında tutar oranla hesaplanır)
+     *
+     * Always present.
+     */
+    public val step: Int,
+    /** Always present. */
+    public val enabled: Boolean,
+    /** Always present. */
+    public val lastOrderAt: String?,
+    /** Always present. */
+    public val createdAt: String,
+    /**
+     * Mağazanızın sipariş bildirimini göndereceği adres
+     *
+     * Always present.
+     */
+    public val webhookUrl: String,
+    /**
+     * Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı
+     *
+     * Always present.
+     */
+    public val orders: SetShopPluginAbilitiesDataOrders,
+    /**
+     * Mağazadan gelen son İMZALI istek: ne zaman ve ne oldu (credited işlendi · unmatched kartı yok · below eşiğin altında · paused bağlantı kapalıyken · currency başka para birimi · duplicate zaten kayıtlı siparişin tekrarı · ignored henüz ödenmemiş sipariş (kaydedilmez) · no_id sipariş numarası yok · bad_body gövde JSON değil). Hiç gelmediyse null.
+     *
+     * Always present.
+     */
+    public val lastDelivery: SetShopPluginAbilitiesDataLastDelivery?,
+    /**
+     * Bu adrese gelen ve imzası tutmadığı için reddedilen son istek (dakikada en çok bir kez yazılır). Sık görünüyorsa mağazadaki gizli anahtar bu bağlantınınki değildir. Hiç olmadıysa null.
+     *
+     * Always present.
+     */
+    public val lastRefusal: SetShopPluginAbilitiesDataLastRefusal?,
+    /**
+     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.
+     *
+     * Always present.
+     */
+    public val pluginKey: SetShopPluginAbilitiesDataPluginKey?,
+    /**
+     * Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.
+     *
+     * Always present.
+     */
+    public val shopName: String?,
+    /**
+     * Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.
+     *
+     * Always present.
+     */
+    public val settings: SetShopPluginAbilitiesDataSettings,
+    /** Always present. */
+    public val accepts: SetShopPluginAbilitiesDataAccepts,
+    /**
+     * Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).
+     *
+     * Always present.
+     */
+    public val unbacked: SetShopPluginAbilitiesDataUnbacked,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopPluginAbilitiesData {
+            val o = ObjectReader(v, path)
+            return SetShopPluginAbilitiesData(
+                id = o.str("id"),
+                platform = o.str("platform"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                programType = o.str("programType"),
+                currency = o.str("currency"),
+                rule = o.str("rule"),
+                perAmountMinor = o.long("perAmountMinor"),
+                step = o.int("step"),
+                enabled = o.bool("enabled"),
+                lastOrderAt = o.strOrNull("lastOrderAt"),
+                createdAt = o.str("createdAt"),
+                webhookUrl = o.str("webhookUrl"),
+                orders = o.req("orders") { x, y -> SetShopPluginAbilitiesDataOrders.read(x, y) },
+                lastDelivery = o.opt("lastDelivery") { x, y -> SetShopPluginAbilitiesDataLastDelivery.read(x, y) },
+                lastRefusal = o.opt("lastRefusal") { x, y -> SetShopPluginAbilitiesDataLastRefusal.read(x, y) },
+                pluginKey = o.opt("pluginKey") { x, y -> SetShopPluginAbilitiesDataPluginKey.read(x, y) },
+                shopName = o.strOrNull("shopName"),
+                settings = o.req("settings") { x, y -> SetShopPluginAbilitiesDataSettings.read(x, y) },
+                accepts = o.req("accepts") { x, y -> SetShopPluginAbilitiesDataAccepts.read(x, y) },
+                unbacked = o.req("unbacked") { x, y -> SetShopPluginAbilitiesDataUnbacked.read(x, y) },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı */
+public class SetShopPluginAbilitiesDataOrders(
+    /** Always present. */
+    public val credited: Int,
+    /** Always present. */
+    public val unmatched: Int,
+    /** Always present. */
+    public val below: Int,
+    /** Always present. */
+    public val paused: Int,
+    /** Always present. */
+    public val currency: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopPluginAbilitiesDataOrders {
+            val o = ObjectReader(v, path)
+            return SetShopPluginAbilitiesDataOrders(
+                credited = o.int("credited"),
+                unmatched = o.int("unmatched"),
+                below = o.int("below"),
+                paused = o.int("paused"),
+                currency = o.int("currency"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Mağazadan gelen son İMZALI istek: ne zaman ve ne oldu (credited işlendi · unmatched kartı yok · below eşiğin altında · paused bağlantı kapalıyken · currency başka para birimi · duplicate zaten kayıtlı siparişin tekrarı · ignored henüz ödenmemiş sipariş (kaydedilmez) · no_id sipariş numarası yok · bad_body gövde JSON değil). Hiç gelmediyse null. */
+public class SetShopPluginAbilitiesDataLastDelivery(
+    /** Always present. */
+    public val at: String,
+    /**
+     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.
+     *
+     * Always present.
+     */
+    public val result: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopPluginAbilitiesDataLastDelivery {
+            val o = ObjectReader(v, path)
+            return SetShopPluginAbilitiesDataLastDelivery(
+                at = o.str("at"),
+                result = o.str("result"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Bu adrese gelen ve imzası tutmadığı için reddedilen son istek (dakikada en çok bir kez yazılır). Sık görünüyorsa mağazadaki gizli anahtar bu bağlantınınki değildir. Hiç olmadıysa null. */
+public class SetShopPluginAbilitiesDataLastRefusal(
+    /** Always present. */
+    public val at: String,
+    /**
+     * One of: `bad_signature`.
+     *
+     * Always present.
+     */
+    public val reason: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopPluginAbilitiesDataLastRefusal {
+            val o = ObjectReader(v, path)
+            return SetShopPluginAbilitiesDataLastRefusal(
+                at = o.str("at"),
+                reason = o.str("reason"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir. */
+public class SetShopPluginAbilitiesDataPluginKey(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val prefix: String,
+    /** Always present. */
+    public val name: String,
+    /**
+     * Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)
+     *
+     * Always present.
+     */
+    public val abilities: List<String>,
+    /**
+     * Kasa açıksa şubesi; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationId: String?,
+    /**
+     * Kasanın şubesinin adı; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationName: String?,
+    /**
+     * Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar
+     *
+     * Always present.
+     */
+    public val tillArchived: Boolean,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopPluginAbilitiesDataPluginKey {
+            val o = ObjectReader(v, path)
+            return SetShopPluginAbilitiesDataPluginKey(
+                id = o.str("id"),
+                prefix = o.str("prefix"),
+                name = o.str("name"),
+                abilities = o.req("abilities") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                tillLocationId = o.strOrNull("tillLocationId"),
+                tillLocationName = o.strOrNull("tillLocationName"),
+                tillArchived = o.bool("tillArchived"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir. */
+public class SetShopPluginAbilitiesDataSettings(
+    /**
+     * Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.
+     *
+     * Always present.
+     */
+    public val tax: SetShopPluginAbilitiesDataSettingsTax,
+    /**
+     * İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.
+     *
+     * One of: `code_orders`, `all`, `never`.
+     *
+     * Always present.
+     */
+    public val refundReverses: String,
+    /**
+     * Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)
+     *
+     * Always present.
+     */
+    public val holdDays: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopPluginAbilitiesDataSettings {
+            val o = ObjectReader(v, path)
+            return SetShopPluginAbilitiesDataSettings(
+                tax = o.req("tax") { x, y -> SetShopPluginAbilitiesDataSettingsTax.read(x, y) },
+                refundReverses = o.str("refundReverses"),
+                holdDays = o.int("holdDays"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır. */
+public class SetShopPluginAbilitiesDataSettingsTax(
+    /**
+     * Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val giftcard: String,
+    /**
+     * Cashback: `discount` (varsayılan) ya da `payment`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val cashback: String,
+    /**
+     * Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val voucher: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopPluginAbilitiesDataSettingsTax {
+            val o = ObjectReader(v, path)
+            return SetShopPluginAbilitiesDataSettingsTax(
+                giftcard = o.str("giftcard"),
+                cashback = o.str("cashback"),
+                voucher = o.str("voucher"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `SetShopPluginAbilitiesDataAccepts` object. */
+public class SetShopPluginAbilitiesDataAccepts(
+    /**
+     * İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.
+     *
+     * Always present.
+     */
+    public val programIds: List<String>,
+    /**
+     * Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.
+     *
+     * Always present.
+     */
+    public val ceiling: List<SetShopPluginAbilitiesDataAcceptsCeilingItem>?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopPluginAbilitiesDataAccepts {
+            val o = ObjectReader(v, path)
+            return SetShopPluginAbilitiesDataAccepts(
+                programIds = o.req("programIds") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                ceiling = o.opt("ceiling") { x, y -> Wire.list(x, y) { v1, p1 -> SetShopPluginAbilitiesDataAcceptsCeilingItem.read(v1, p1) } },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `SetShopPluginAbilitiesDataAcceptsCeilingItem` object. */
+public class SetShopPluginAbilitiesDataAcceptsCeilingItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopPluginAbilitiesDataAcceptsCeilingItem {
+            val o = ObjectReader(v, path)
+            return SetShopPluginAbilitiesDataAcceptsCeilingItem(
+                id = o.str("id"),
+                name = o.str("name"),
+                type = o.str("type"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`). */
+public class SetShopPluginAbilitiesDataUnbacked(
+    /** Always present. */
+    public val count: Int,
+    /** Always present. */
+    public val lastAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopPluginAbilitiesDataUnbacked {
+            val o = ObjectReader(v, path)
+            return SetShopPluginAbilitiesDataUnbacked(
+                count = o.int("count"),
+                lastAt = o.strOrNull("lastAt"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `QuoteCheckoutCodeBody` object. */
+public class QuoteCheckoutCodeBody(
+    /**
+     * Müşterinin yazdığı kod: `RW-XXXX-XXXX` (büyük/küçük harf, boşluk ve tire fark etmez)
+     *
+     * Required.
+     */
+    public var code: String,
+    /**
+     * Siparişin para birimi (ISO 4217, örn. TRY)
+     *
+     * Required.
+     */
+    public var currency: String,
+    /** İsteğe bağlı: alışverişçinin kişisel veri taşımayan anahtarı (ör. WooCommerce oturumunun HMAC'i); kendi soru bütçesi olur */
+    public var shopper: String? = null,
+    /** İsteğe bağlı: kodu soran sipariş. Kod bu siparişteyse `CODE_USED` yerine bu siparişin kullanımı döner (ADR 180). */
+    public var orderId: String? = null,
+) : RewloyObject() {
+    /** The required fields only; set the rest with the setters. */
+    public constructor(code: String, currency: String) : this(
+        code,
+        currency,
+        null,
+        null,
+    )
+
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.str("code", this.code)
+        w.str("currency", this.currency)
+        w.str("shopper", this.shopper)
+        w.str("orderId", this.orderId)
+        return w.finish(extras())
+    }
+}
+
+/** The `QuoteCheckoutCodeData` object. */
+public class QuoteCheckoutCodeData(
+    /**
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /** Always present. */
+    public val currency: String,
+    /** Always present. */
+    public val maxMinor: Long?,
+    /** Always present. */
+    public val percent: Int?,
+    /** Always present. */
+    public val amountMinor: Long?,
+    /**
+     * One of: `payment`, `discount`, null.
+     *
+     * Always present.
+     */
+    public val tax: String?,
+    /** Always present. */
+    public val cardId: String,
+    /** Always present. */
+    public val cardLast4: String,
+    /** Always present. */
+    public val codeLast4: String,
+    /** Always present. */
+    public val firstUseBy: String,
+    /**
+     * Kodun bir siparişe bağlanabileceği son an
+     *
+     * Always present.
+     */
+    public val attachBy: String,
+    /** Yalnız `orderId` gönderildiyse: bu siparişin bu koddaki kullanımı; kod bu siparişin değilse null */
+    public val redemption: QuoteCheckoutCodeDataRedemption?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): QuoteCheckoutCodeData {
+            val o = ObjectReader(v, path)
+            return QuoteCheckoutCodeData(
+                kind = o.str("kind"),
+                type = o.str("type"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                currency = o.str("currency"),
+                maxMinor = o.longOrNull("maxMinor"),
+                percent = o.intOrNull("percent"),
+                amountMinor = o.longOrNull("amountMinor"),
+                tax = o.strOrNull("tax"),
+                cardId = o.str("cardId"),
+                cardLast4 = o.str("cardLast4"),
+                codeLast4 = o.str("codeLast4"),
+                firstUseBy = o.str("firstUseBy"),
+                attachBy = o.str("attachBy"),
+                redemption = o.opt("redemption") { x, y -> QuoteCheckoutCodeDataRedemption.read(x, y) },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Yalnız `orderId` gönderildiyse: bu siparişin bu koddaki kullanımı; kod bu siparişin değilse null */
+public class QuoteCheckoutCodeDataRedemption(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val orderId: String,
+    /**
+     * Kodun son 4 karakteri (sipariş notu için)
+     *
+     * Always present.
+     */
+    public val codeLast4: String,
+    /**
+     * Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez
+     *
+     * Always present.
+     */
+    public val cardId: String?,
+    /**
+     * Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez
+     *
+     * Always present.
+     */
+    public val cardLast4: String,
+    /**
+     * balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)
+     *
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /**
+     * balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0
+     *
+     * Always present.
+     */
+    public val amountMinor: Long,
+    /** Always present. */
+    public val percent: Int?,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)
+     *
+     * One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.
+     *
+     * Always present.
+     */
+    public val state: String,
+    /**
+     * Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar
+     *
+     * Always present.
+     */
+    public val generation: Int,
+    /**
+     * Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)
+     *
+     * Always present.
+     */
+    public val heldUntil: String?,
+    /** Always present. */
+    public val capturedMinor: Long,
+    /** Always present. */
+    public val refundedMinor: Long,
+    /**
+     * Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)
+     *
+     * Always present.
+     */
+    public val late: Boolean,
+    /**
+     * One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.
+     *
+     * Always present.
+     */
+    public val releaseReason: String?,
+    /** Always present. */
+    public val createdAt: String,
+    /** Always present. */
+    public val capturedAt: String?,
+    /** Always present. */
+    public val releasedAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): QuoteCheckoutCodeDataRedemption {
+            val o = ObjectReader(v, path)
+            return QuoteCheckoutCodeDataRedemption(
+                id = o.str("id"),
+                orderId = o.str("orderId"),
+                codeLast4 = o.str("codeLast4"),
+                cardId = o.strOrNull("cardId"),
+                cardLast4 = o.str("cardLast4"),
+                kind = o.str("kind"),
+                type = o.str("type"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                amountMinor = o.long("amountMinor"),
+                percent = o.intOrNull("percent"),
+                currency = o.str("currency"),
+                state = o.str("state"),
+                generation = o.int("generation"),
+                heldUntil = o.strOrNull("heldUntil"),
+                capturedMinor = o.long("capturedMinor"),
+                refundedMinor = o.long("refundedMinor"),
+                late = o.bool("late"),
+                releaseReason = o.strOrNull("releaseReason"),
+                createdAt = o.str("createdAt"),
+                capturedAt = o.strOrNull("capturedAt"),
+                releasedAt = o.strOrNull("releasedAt"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `ListOrderRedemptionsItem` object. */
+public class ListOrderRedemptionsItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val orderId: String,
+    /**
+     * Kodun son 4 karakteri (sipariş notu için)
+     *
+     * Always present.
+     */
+    public val codeLast4: String,
+    /**
+     * Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez
+     *
+     * Always present.
+     */
+    public val cardId: String?,
+    /**
+     * Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez
+     *
+     * Always present.
+     */
+    public val cardLast4: String,
+    /**
+     * balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)
+     *
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /**
+     * balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0
+     *
+     * Always present.
+     */
+    public val amountMinor: Long,
+    /** Always present. */
+    public val percent: Int?,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)
+     *
+     * One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.
+     *
+     * Always present.
+     */
+    public val state: String,
+    /**
+     * Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar
+     *
+     * Always present.
+     */
+    public val generation: Int,
+    /**
+     * Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)
+     *
+     * Always present.
+     */
+    public val heldUntil: String?,
+    /** Always present. */
+    public val capturedMinor: Long,
+    /** Always present. */
+    public val refundedMinor: Long,
+    /**
+     * Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)
+     *
+     * Always present.
+     */
+    public val late: Boolean,
+    /**
+     * One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.
+     *
+     * Always present.
+     */
+    public val releaseReason: String?,
+    /** Always present. */
+    public val createdAt: String,
+    /** Always present. */
+    public val capturedAt: String?,
+    /** Always present. */
+    public val releasedAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ListOrderRedemptionsItem {
+            val o = ObjectReader(v, path)
+            return ListOrderRedemptionsItem(
+                id = o.str("id"),
+                orderId = o.str("orderId"),
+                codeLast4 = o.str("codeLast4"),
+                cardId = o.strOrNull("cardId"),
+                cardLast4 = o.str("cardLast4"),
+                kind = o.str("kind"),
+                type = o.str("type"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                amountMinor = o.long("amountMinor"),
+                percent = o.intOrNull("percent"),
+                currency = o.str("currency"),
+                state = o.str("state"),
+                generation = o.int("generation"),
+                heldUntil = o.strOrNull("heldUntil"),
+                capturedMinor = o.long("capturedMinor"),
+                refundedMinor = o.long("refundedMinor"),
+                late = o.bool("late"),
+                releaseReason = o.strOrNull("releaseReason"),
+                createdAt = o.str("createdAt"),
+                capturedAt = o.strOrNull("capturedAt"),
+                releasedAt = o.strOrNull("releasedAt"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `HoldCheckoutCodeBody` object. */
+public class HoldCheckoutCodeBody(
+    /**
+     * Müşterinin yazdığı kod: `RW-XXXX-XXXX` (büyük/küçük harf, boşluk ve tire fark etmez)
+     *
+     * Required.
+     */
+    public var code: String,
+    /**
+     * Siparişin para birimi (ISO 4217, örn. TRY)
+     *
+     * Required.
+     */
+    public var currency: String,
+    /** `amountMinor`. */
+    public var amountMinor: Int? = null,
+    /** Siparişin indirimden önceki toplamı (kuruş); verilirse amountMinor onu aşamaz */
+    public var orderTotalMinor: Int? = null,
+) : RewloyObject() {
+    /** The required fields only; set the rest with the setters. */
+    public constructor(code: String, currency: String) : this(
+        code,
+        currency,
+        null,
+        null,
+    )
+
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.str("code", this.code)
+        w.str("currency", this.currency)
+        w.int("amountMinor", this.amountMinor)
+        w.int("orderTotalMinor", this.orderTotalMinor)
+        return w.finish(extras())
+    }
+}
+
+/** The `HoldCheckoutCodeData` object. */
+public class HoldCheckoutCodeData(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val orderId: String,
+    /**
+     * Kodun son 4 karakteri (sipariş notu için)
+     *
+     * Always present.
+     */
+    public val codeLast4: String,
+    /**
+     * Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez
+     *
+     * Always present.
+     */
+    public val cardId: String?,
+    /**
+     * Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez
+     *
+     * Always present.
+     */
+    public val cardLast4: String,
+    /**
+     * balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)
+     *
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /**
+     * balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0
+     *
+     * Always present.
+     */
+    public val amountMinor: Long,
+    /** Always present. */
+    public val percent: Int?,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)
+     *
+     * One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.
+     *
+     * Always present.
+     */
+    public val state: String,
+    /**
+     * Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar
+     *
+     * Always present.
+     */
+    public val generation: Int,
+    /**
+     * Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)
+     *
+     * Always present.
+     */
+    public val heldUntil: String?,
+    /** Always present. */
+    public val capturedMinor: Long,
+    /** Always present. */
+    public val refundedMinor: Long,
+    /**
+     * Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)
+     *
+     * Always present.
+     */
+    public val late: Boolean,
+    /**
+     * One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.
+     *
+     * Always present.
+     */
+    public val releaseReason: String?,
+    /** Always present. */
+    public val createdAt: String,
+    /** Always present. */
+    public val capturedAt: String?,
+    /** Always present. */
+    public val releasedAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): HoldCheckoutCodeData {
+            val o = ObjectReader(v, path)
+            return HoldCheckoutCodeData(
+                id = o.str("id"),
+                orderId = o.str("orderId"),
+                codeLast4 = o.str("codeLast4"),
+                cardId = o.strOrNull("cardId"),
+                cardLast4 = o.str("cardLast4"),
+                kind = o.str("kind"),
+                type = o.str("type"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                amountMinor = o.long("amountMinor"),
+                percent = o.intOrNull("percent"),
+                currency = o.str("currency"),
+                state = o.str("state"),
+                generation = o.int("generation"),
+                heldUntil = o.strOrNull("heldUntil"),
+                capturedMinor = o.long("capturedMinor"),
+                refundedMinor = o.long("refundedMinor"),
+                late = o.bool("late"),
+                releaseReason = o.strOrNull("releaseReason"),
+                createdAt = o.str("createdAt"),
+                capturedAt = o.strOrNull("capturedAt"),
+                releasedAt = o.strOrNull("releasedAt"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `CaptureCheckoutOrderBody` object. */
+public class CaptureCheckoutOrderBody(
+    /** `captures`. */
+    public var captures: List<CaptureCheckoutOrderBodyCapturesItem>? = null,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.list("captures", this.captures) { e -> Out.obj(e) }
+        return w.finish(extras())
+    }
+}
+
+/** The `CaptureCheckoutOrderBodyCapturesItem` object. */
+public class CaptureCheckoutOrderBodyCapturesItem(
+    /** Required. */
+    public var id: String,
+    /** Required. */
+    public var amountMinor: Int,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.str("id", this.id)
+        w.int("amountMinor", this.amountMinor)
+        return w.finish(extras())
+    }
+}
+
+/** The `CaptureCheckoutOrderItem` object. */
+public class CaptureCheckoutOrderItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val orderId: String,
+    /**
+     * Kodun son 4 karakteri (sipariş notu için)
+     *
+     * Always present.
+     */
+    public val codeLast4: String,
+    /**
+     * Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez
+     *
+     * Always present.
+     */
+    public val cardId: String?,
+    /**
+     * Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez
+     *
+     * Always present.
+     */
+    public val cardLast4: String,
+    /**
+     * balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)
+     *
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /**
+     * balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0
+     *
+     * Always present.
+     */
+    public val amountMinor: Long,
+    /** Always present. */
+    public val percent: Int?,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)
+     *
+     * One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.
+     *
+     * Always present.
+     */
+    public val state: String,
+    /**
+     * Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar
+     *
+     * Always present.
+     */
+    public val generation: Int,
+    /**
+     * Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)
+     *
+     * Always present.
+     */
+    public val heldUntil: String?,
+    /** Always present. */
+    public val capturedMinor: Long,
+    /** Always present. */
+    public val refundedMinor: Long,
+    /**
+     * Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)
+     *
+     * Always present.
+     */
+    public val late: Boolean,
+    /**
+     * One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.
+     *
+     * Always present.
+     */
+    public val releaseReason: String?,
+    /** Always present. */
+    public val createdAt: String,
+    /** Always present. */
+    public val capturedAt: String?,
+    /** Always present. */
+    public val releasedAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): CaptureCheckoutOrderItem {
+            val o = ObjectReader(v, path)
+            return CaptureCheckoutOrderItem(
+                id = o.str("id"),
+                orderId = o.str("orderId"),
+                codeLast4 = o.str("codeLast4"),
+                cardId = o.strOrNull("cardId"),
+                cardLast4 = o.str("cardLast4"),
+                kind = o.str("kind"),
+                type = o.str("type"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                amountMinor = o.long("amountMinor"),
+                percent = o.intOrNull("percent"),
+                currency = o.str("currency"),
+                state = o.str("state"),
+                generation = o.int("generation"),
+                heldUntil = o.strOrNull("heldUntil"),
+                capturedMinor = o.long("capturedMinor"),
+                refundedMinor = o.long("refundedMinor"),
+                late = o.bool("late"),
+                releaseReason = o.strOrNull("releaseReason"),
+                createdAt = o.str("createdAt"),
+                capturedAt = o.strOrNull("capturedAt"),
+                releasedAt = o.strOrNull("releasedAt"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `ReleaseCheckoutOrderBody` object. */
+public class ReleaseCheckoutOrderBody(
+    /** One of: `cancelled`, `failed`, `shop`. */
+    public var reason: String? = null,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.str("reason", this.reason)
+        return w.finish(extras())
+    }
+}
+
+/** The `ReleaseCheckoutOrderItem` object. */
+public class ReleaseCheckoutOrderItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val orderId: String,
+    /**
+     * Kodun son 4 karakteri (sipariş notu için)
+     *
+     * Always present.
+     */
+    public val codeLast4: String,
+    /**
+     * Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez
+     *
+     * Always present.
+     */
+    public val cardId: String?,
+    /**
+     * Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez
+     *
+     * Always present.
+     */
+    public val cardLast4: String,
+    /**
+     * balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)
+     *
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /**
+     * balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0
+     *
+     * Always present.
+     */
+    public val amountMinor: Long,
+    /** Always present. */
+    public val percent: Int?,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)
+     *
+     * One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.
+     *
+     * Always present.
+     */
+    public val state: String,
+    /**
+     * Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar
+     *
+     * Always present.
+     */
+    public val generation: Int,
+    /**
+     * Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)
+     *
+     * Always present.
+     */
+    public val heldUntil: String?,
+    /** Always present. */
+    public val capturedMinor: Long,
+    /** Always present. */
+    public val refundedMinor: Long,
+    /**
+     * Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)
+     *
+     * Always present.
+     */
+    public val late: Boolean,
+    /**
+     * One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.
+     *
+     * Always present.
+     */
+    public val releaseReason: String?,
+    /** Always present. */
+    public val createdAt: String,
+    /** Always present. */
+    public val capturedAt: String?,
+    /** Always present. */
+    public val releasedAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ReleaseCheckoutOrderItem {
+            val o = ObjectReader(v, path)
+            return ReleaseCheckoutOrderItem(
+                id = o.str("id"),
+                orderId = o.str("orderId"),
+                codeLast4 = o.str("codeLast4"),
+                cardId = o.strOrNull("cardId"),
+                cardLast4 = o.str("cardLast4"),
+                kind = o.str("kind"),
+                type = o.str("type"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                amountMinor = o.long("amountMinor"),
+                percent = o.intOrNull("percent"),
+                currency = o.str("currency"),
+                state = o.str("state"),
+                generation = o.int("generation"),
+                heldUntil = o.strOrNull("heldUntil"),
+                capturedMinor = o.long("capturedMinor"),
+                refundedMinor = o.long("refundedMinor"),
+                late = o.bool("late"),
+                releaseReason = o.strOrNull("releaseReason"),
+                createdAt = o.str("createdAt"),
+                capturedAt = o.strOrNull("capturedAt"),
+                releasedAt = o.strOrNull("releasedAt"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `RefundCheckoutOrderBody` object. */
+public class RefundCheckoutOrderBody(
+    /** `amountMinor`. */
+    public var amountMinor: Int? = null,
+    /** `redemptionId`. */
+    public var redemptionId: String? = null,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.int("amountMinor", this.amountMinor)
+        w.str("redemptionId", this.redemptionId)
+        return w.finish(extras())
+    }
+}
+
+/** The `RefundCheckoutOrderData` object. */
+public class RefundCheckoutOrderData(
+    /** Always present. */
+    public val redemptions: List<RefundCheckoutOrderDataRedemptionsItem>,
+    /** Always present. */
+    public val unearned: RefundCheckoutOrderDataUnearned?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): RefundCheckoutOrderData {
+            val o = ObjectReader(v, path)
+            return RefundCheckoutOrderData(
+                redemptions = o.req("redemptions") { x, y -> Wire.list(x, y) { v1, p1 -> RefundCheckoutOrderDataRedemptionsItem.read(v1, p1) } },
+                unearned = o.opt("unearned") { x, y -> RefundCheckoutOrderDataUnearned.read(x, y) },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `RefundCheckoutOrderDataRedemptionsItem` object. */
+public class RefundCheckoutOrderDataRedemptionsItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val orderId: String,
+    /**
+     * Kodun son 4 karakteri (sipariş notu için)
+     *
+     * Always present.
+     */
+    public val codeLast4: String,
+    /**
+     * Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez
+     *
+     * Always present.
+     */
+    public val cardId: String?,
+    /**
+     * Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez
+     *
+     * Always present.
+     */
+    public val cardLast4: String,
+    /**
+     * balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)
+     *
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /**
+     * balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0
+     *
+     * Always present.
+     */
+    public val amountMinor: Long,
+    /** Always present. */
+    public val percent: Int?,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)
+     *
+     * One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.
+     *
+     * Always present.
+     */
+    public val state: String,
+    /**
+     * Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar
+     *
+     * Always present.
+     */
+    public val generation: Int,
+    /**
+     * Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)
+     *
+     * Always present.
+     */
+    public val heldUntil: String?,
+    /** Always present. */
+    public val capturedMinor: Long,
+    /** Always present. */
+    public val refundedMinor: Long,
+    /**
+     * Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)
+     *
+     * Always present.
+     */
+    public val late: Boolean,
+    /**
+     * One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.
+     *
+     * Always present.
+     */
+    public val releaseReason: String?,
+    /** Always present. */
+    public val createdAt: String,
+    /** Always present. */
+    public val capturedAt: String?,
+    /** Always present. */
+    public val releasedAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): RefundCheckoutOrderDataRedemptionsItem {
+            val o = ObjectReader(v, path)
+            return RefundCheckoutOrderDataRedemptionsItem(
+                id = o.str("id"),
+                orderId = o.str("orderId"),
+                codeLast4 = o.str("codeLast4"),
+                cardId = o.strOrNull("cardId"),
+                cardLast4 = o.str("cardLast4"),
+                kind = o.str("kind"),
+                type = o.str("type"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                amountMinor = o.long("amountMinor"),
+                percent = o.intOrNull("percent"),
+                currency = o.str("currency"),
+                state = o.str("state"),
+                generation = o.int("generation"),
+                heldUntil = o.strOrNull("heldUntil"),
+                capturedMinor = o.long("capturedMinor"),
+                refundedMinor = o.long("refundedMinor"),
+                late = o.bool("late"),
+                releaseReason = o.strOrNull("releaseReason"),
+                createdAt = o.str("createdAt"),
+                capturedAt = o.strOrNull("capturedAt"),
+                releasedAt = o.strOrNull("releasedAt"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `RefundCheckoutOrderDataUnearned` object. */
+public class RefundCheckoutOrderDataUnearned(
+    /** Always present. */
+    public val cardLast4: String,
+    /**
+     * stamp, point, visit ya da try_minor (kuruş)
+     *
+     * Always present.
+     */
+    public val unit: String,
+    /** Always present. */
+    public val earned: Long,
+    /** Always present. */
+    public val reversed: Long,
+    /**
+     * Kartta kalmadığı için geri alınamayan kısım
+     *
+     * Always present.
+     */
+    public val short: Long,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): RefundCheckoutOrderDataUnearned {
+            val o = ObjectReader(v, path)
+            return RefundCheckoutOrderDataUnearned(
+                cardLast4 = o.str("cardLast4"),
+                unit = o.str("unit"),
+                earned = o.long("earned"),
+                reversed = o.long("reversed"),
+                short = o.long("short"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Query parameters of `listShopRedemptions`. */
+public class ListShopRedemptionsQuery(
+    /** One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`. */
+    public var state: String? = null,
+    /** `page`. */
+    public var page: Int? = null,
+    /** `limit`. */
+    public var limit: Int? = null,
+) : RewloyQuery() {
+    internal override fun writeTo(writer: QueryWriter) {
+        writer.add("state", this.state)
+        writer.add("page", this.page)
+        writer.add("limit", this.limit)
+    }
+
+    /** A copy of these parameters asking for another page. */
+    internal fun withPage(page: Long): ListShopRedemptionsQuery = ListShopRedemptionsQuery(
+        state = this.state,
+        page = page.toInt(),
+        limit = this.limit,
+    )
+}
+
+/** The `ListShopRedemptionsItem` object. */
+public class ListShopRedemptionsItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val orderId: String,
+    /**
+     * Kodun son 4 karakteri (sipariş notu için)
+     *
+     * Always present.
+     */
+    public val codeLast4: String,
+    /**
+     * Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez
+     *
+     * Always present.
+     */
+    public val cardId: String?,
+    /**
+     * Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez
+     *
+     * Always present.
+     */
+    public val cardLast4: String,
+    /**
+     * balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)
+     *
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /**
+     * balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0
+     *
+     * Always present.
+     */
+    public val amountMinor: Long,
+    /** Always present. */
+    public val percent: Int?,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)
+     *
+     * One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.
+     *
+     * Always present.
+     */
+    public val state: String,
+    /**
+     * Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar
+     *
+     * Always present.
+     */
+    public val generation: Int,
+    /**
+     * Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)
+     *
+     * Always present.
+     */
+    public val heldUntil: String?,
+    /** Always present. */
+    public val capturedMinor: Long,
+    /** Always present. */
+    public val refundedMinor: Long,
+    /**
+     * Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)
+     *
+     * Always present.
+     */
+    public val late: Boolean,
+    /**
+     * One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.
+     *
+     * Always present.
+     */
+    public val releaseReason: String?,
+    /** Always present. */
+    public val createdAt: String,
+    /** Always present. */
+    public val capturedAt: String?,
+    /** Always present. */
+    public val releasedAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ListShopRedemptionsItem {
+            val o = ObjectReader(v, path)
+            return ListShopRedemptionsItem(
+                id = o.str("id"),
+                orderId = o.str("orderId"),
+                codeLast4 = o.str("codeLast4"),
+                cardId = o.strOrNull("cardId"),
+                cardLast4 = o.str("cardLast4"),
+                kind = o.str("kind"),
+                type = o.str("type"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                amountMinor = o.long("amountMinor"),
+                percent = o.intOrNull("percent"),
+                currency = o.str("currency"),
+                state = o.str("state"),
+                generation = o.int("generation"),
+                heldUntil = o.strOrNull("heldUntil"),
+                capturedMinor = o.long("capturedMinor"),
+                refundedMinor = o.long("refundedMinor"),
+                late = o.bool("late"),
+                releaseReason = o.strOrNull("releaseReason"),
+                createdAt = o.str("createdAt"),
+                capturedAt = o.strOrNull("capturedAt"),
+                releasedAt = o.strOrNull("releasedAt"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `ReleaseShopRedemptionBody` object. */
+public class ReleaseShopRedemptionBody(
+    /**
+     * Neden (kayda geçer, defter kaydının notu olur)
+     *
+     * Required.
+     */
+    public var reason: String,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.str("reason", this.reason)
+        return w.finish(extras())
+    }
+}
+
+/** The `ReleaseShopRedemptionData` object. */
+public class ReleaseShopRedemptionData(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val orderId: String,
+    /**
+     * Kodun son 4 karakteri (sipariş notu için)
+     *
+     * Always present.
+     */
+    public val codeLast4: String,
+    /**
+     * Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez
+     *
+     * Always present.
+     */
+    public val cardId: String?,
+    /**
+     * Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez
+     *
+     * Always present.
+     */
+    public val cardLast4: String,
+    /**
+     * balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)
+     *
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /**
+     * balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0
+     *
+     * Always present.
+     */
+    public val amountMinor: Long,
+    /** Always present. */
+    public val percent: Int?,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)
+     *
+     * One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.
+     *
+     * Always present.
+     */
+    public val state: String,
+    /**
+     * Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar
+     *
+     * Always present.
+     */
+    public val generation: Int,
+    /**
+     * Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)
+     *
+     * Always present.
+     */
+    public val heldUntil: String?,
+    /** Always present. */
+    public val capturedMinor: Long,
+    /** Always present. */
+    public val refundedMinor: Long,
+    /**
+     * Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)
+     *
+     * Always present.
+     */
+    public val late: Boolean,
+    /**
+     * One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.
+     *
+     * Always present.
+     */
+    public val releaseReason: String?,
+    /** Always present. */
+    public val createdAt: String,
+    /** Always present. */
+    public val capturedAt: String?,
+    /** Always present. */
+    public val releasedAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): ReleaseShopRedemptionData {
+            val o = ObjectReader(v, path)
+            return ReleaseShopRedemptionData(
+                id = o.str("id"),
+                orderId = o.str("orderId"),
+                codeLast4 = o.str("codeLast4"),
+                cardId = o.strOrNull("cardId"),
+                cardLast4 = o.str("cardLast4"),
+                kind = o.str("kind"),
+                type = o.str("type"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                amountMinor = o.long("amountMinor"),
+                percent = o.intOrNull("percent"),
+                currency = o.str("currency"),
+                state = o.str("state"),
+                generation = o.int("generation"),
+                heldUntil = o.strOrNull("heldUntil"),
+                capturedMinor = o.long("capturedMinor"),
+                refundedMinor = o.long("refundedMinor"),
+                late = o.bool("late"),
+                releaseReason = o.strOrNull("releaseReason"),
+                createdAt = o.str("createdAt"),
+                capturedAt = o.strOrNull("capturedAt"),
+                releasedAt = o.strOrNull("releasedAt"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `RefundShopRedemptionBody` object. */
+public class RefundShopRedemptionBody(
+    /** Required. */
+    public var amountMinor: Int,
+    /**
+     * Neden (kayda geçer, defter kaydının notu olur)
+     *
+     * Required.
+     */
+    public var reason: String,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.int("amountMinor", this.amountMinor)
+        w.str("reason", this.reason)
+        return w.finish(extras())
+    }
+}
+
+/** The `RefundShopRedemptionData` object. */
+public class RefundShopRedemptionData(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val orderId: String,
+    /**
+     * Kodun son 4 karakteri (sipariş notu için)
+     *
+     * Always present.
+     */
+    public val codeLast4: String,
+    /**
+     * Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez
+     *
+     * Always present.
+     */
+    public val cardId: String?,
+    /**
+     * Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez
+     *
+     * Always present.
+     */
+    public val cardLast4: String,
+    /**
+     * balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)
+     *
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /**
+     * balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0
+     *
+     * Always present.
+     */
+    public val amountMinor: Long,
+    /** Always present. */
+    public val percent: Int?,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)
+     *
+     * One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.
+     *
+     * Always present.
+     */
+    public val state: String,
+    /**
+     * Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar
+     *
+     * Always present.
+     */
+    public val generation: Int,
+    /**
+     * Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)
+     *
+     * Always present.
+     */
+    public val heldUntil: String?,
+    /** Always present. */
+    public val capturedMinor: Long,
+    /** Always present. */
+    public val refundedMinor: Long,
+    /**
+     * Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)
+     *
+     * Always present.
+     */
+    public val late: Boolean,
+    /**
+     * One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.
+     *
+     * Always present.
+     */
+    public val releaseReason: String?,
+    /** Always present. */
+    public val createdAt: String,
+    /** Always present. */
+    public val capturedAt: String?,
+    /** Always present. */
+    public val releasedAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): RefundShopRedemptionData {
+            val o = ObjectReader(v, path)
+            return RefundShopRedemptionData(
+                id = o.str("id"),
+                orderId = o.str("orderId"),
+                codeLast4 = o.str("codeLast4"),
+                cardId = o.strOrNull("cardId"),
+                cardLast4 = o.str("cardLast4"),
+                kind = o.str("kind"),
+                type = o.str("type"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                amountMinor = o.long("amountMinor"),
+                percent = o.intOrNull("percent"),
+                currency = o.str("currency"),
+                state = o.str("state"),
+                generation = o.int("generation"),
+                heldUntil = o.strOrNull("heldUntil"),
+                capturedMinor = o.long("capturedMinor"),
+                refundedMinor = o.long("refundedMinor"),
+                late = o.bool("late"),
+                releaseReason = o.strOrNull("releaseReason"),
+                createdAt = o.str("createdAt"),
+                capturedAt = o.strOrNull("capturedAt"),
+                releasedAt = o.strOrNull("releasedAt"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `SetShopSettingsBody` object. */
+public class SetShopSettingsBody(
+    /** `tax`. */
+    public var tax: SetShopSettingsBodyTax? = null,
+    /** One of: `code_orders`, `all`, `never`. */
+    public var refundReverses: String? = null,
+    /** `holdDays`. */
+    public var holdDays: Int? = null,
+    /** `accepts`. */
+    public var accepts: SetShopSettingsBodyAccepts? = null,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.obj("tax", this.tax)
+        w.str("refundReverses", this.refundReverses)
+        w.int("holdDays", this.holdDays)
+        w.obj("accepts", this.accepts)
+        return w.finish(extras())
+    }
+}
+
+/** The `SetShopSettingsBodyTax` object. */
+public class SetShopSettingsBodyTax(
+    /** One of: `payment`, `discount`. */
+    public var giftcard: String? = null,
+    /** One of: `payment`, `discount`. */
+    public var cashback: String? = null,
+    /** One of: `payment`, `discount`. */
+    public var voucher: String? = null,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.str("giftcard", this.giftcard)
+        w.str("cashback", this.cashback)
+        w.str("voucher", this.voucher)
+        return w.finish(extras())
+    }
+}
+
+/** The `SetShopSettingsBodyAccepts` object. */
+public class SetShopSettingsBodyAccepts(
+    /** Required. */
+    public var programIds: List<String>,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.list("programIds", this.programIds) { e -> Out.str(e) }
+        return w.finish(extras())
+    }
+}
+
+/** The `SetShopSettingsData` object. */
+public class SetShopSettingsData(
+    /** Always present. */
+    public val id: String,
+    /**
+     * One of: `shopify`, `woocommerce`.
+     *
+     * Always present.
+     */
+    public val platform: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /** Always present. */
+    public val programType: String,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * order: her sipariş · amount: her `perAmountMinor` tutar için
+     *
+     * One of: `order`, `amount`.
+     *
+     * Always present.
+     */
+    public val rule: String,
+    /** Always present. */
+    public val perAmountMinor: Long,
+    /**
+     * Her seferinde eklenen damga/puan/ziyaret (cashback kartında tutar oranla hesaplanır)
+     *
+     * Always present.
+     */
+    public val step: Int,
+    /** Always present. */
+    public val enabled: Boolean,
+    /** Always present. */
+    public val lastOrderAt: String?,
+    /** Always present. */
+    public val createdAt: String,
+    /**
+     * Mağazanızın sipariş bildirimini göndereceği adres
+     *
+     * Always present.
+     */
+    public val webhookUrl: String,
+    /**
+     * Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı
+     *
+     * Always present.
+     */
+    public val orders: SetShopSettingsDataOrders,
+    /**
+     * Mağazadan gelen son İMZALI istek: ne zaman ve ne oldu (credited işlendi · unmatched kartı yok · below eşiğin altında · paused bağlantı kapalıyken · currency başka para birimi · duplicate zaten kayıtlı siparişin tekrarı · ignored henüz ödenmemiş sipariş (kaydedilmez) · no_id sipariş numarası yok · bad_body gövde JSON değil). Hiç gelmediyse null.
+     *
+     * Always present.
+     */
+    public val lastDelivery: SetShopSettingsDataLastDelivery?,
+    /**
+     * Bu adrese gelen ve imzası tutmadığı için reddedilen son istek (dakikada en çok bir kez yazılır). Sık görünüyorsa mağazadaki gizli anahtar bu bağlantınınki değildir. Hiç olmadıysa null.
+     *
+     * Always present.
+     */
+    public val lastRefusal: SetShopSettingsDataLastRefusal?,
+    /**
+     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.
+     *
+     * Always present.
+     */
+    public val pluginKey: SetShopSettingsDataPluginKey?,
+    /**
+     * Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.
+     *
+     * Always present.
+     */
+    public val shopName: String?,
+    /**
+     * Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.
+     *
+     * Always present.
+     */
+    public val settings: SetShopSettingsDataSettings,
+    /** Always present. */
+    public val accepts: SetShopSettingsDataAccepts,
+    /**
+     * Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).
+     *
+     * Always present.
+     */
+    public val unbacked: SetShopSettingsDataUnbacked,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopSettingsData {
+            val o = ObjectReader(v, path)
+            return SetShopSettingsData(
+                id = o.str("id"),
+                platform = o.str("platform"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                programType = o.str("programType"),
+                currency = o.str("currency"),
+                rule = o.str("rule"),
+                perAmountMinor = o.long("perAmountMinor"),
+                step = o.int("step"),
+                enabled = o.bool("enabled"),
+                lastOrderAt = o.strOrNull("lastOrderAt"),
+                createdAt = o.str("createdAt"),
+                webhookUrl = o.str("webhookUrl"),
+                orders = o.req("orders") { x, y -> SetShopSettingsDataOrders.read(x, y) },
+                lastDelivery = o.opt("lastDelivery") { x, y -> SetShopSettingsDataLastDelivery.read(x, y) },
+                lastRefusal = o.opt("lastRefusal") { x, y -> SetShopSettingsDataLastRefusal.read(x, y) },
+                pluginKey = o.opt("pluginKey") { x, y -> SetShopSettingsDataPluginKey.read(x, y) },
+                shopName = o.strOrNull("shopName"),
+                settings = o.req("settings") { x, y -> SetShopSettingsDataSettings.read(x, y) },
+                accepts = o.req("accepts") { x, y -> SetShopSettingsDataAccepts.read(x, y) },
+                unbacked = o.req("unbacked") { x, y -> SetShopSettingsDataUnbacked.read(x, y) },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı */
+public class SetShopSettingsDataOrders(
+    /** Always present. */
+    public val credited: Int,
+    /** Always present. */
+    public val unmatched: Int,
+    /** Always present. */
+    public val below: Int,
+    /** Always present. */
+    public val paused: Int,
+    /** Always present. */
+    public val currency: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopSettingsDataOrders {
+            val o = ObjectReader(v, path)
+            return SetShopSettingsDataOrders(
+                credited = o.int("credited"),
+                unmatched = o.int("unmatched"),
+                below = o.int("below"),
+                paused = o.int("paused"),
+                currency = o.int("currency"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Mağazadan gelen son İMZALI istek: ne zaman ve ne oldu (credited işlendi · unmatched kartı yok · below eşiğin altında · paused bağlantı kapalıyken · currency başka para birimi · duplicate zaten kayıtlı siparişin tekrarı · ignored henüz ödenmemiş sipariş (kaydedilmez) · no_id sipariş numarası yok · bad_body gövde JSON değil). Hiç gelmediyse null. */
+public class SetShopSettingsDataLastDelivery(
+    /** Always present. */
+    public val at: String,
+    /**
+     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.
+     *
+     * Always present.
+     */
+    public val result: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopSettingsDataLastDelivery {
+            val o = ObjectReader(v, path)
+            return SetShopSettingsDataLastDelivery(
+                at = o.str("at"),
+                result = o.str("result"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Bu adrese gelen ve imzası tutmadığı için reddedilen son istek (dakikada en çok bir kez yazılır). Sık görünüyorsa mağazadaki gizli anahtar bu bağlantınınki değildir. Hiç olmadıysa null. */
+public class SetShopSettingsDataLastRefusal(
+    /** Always present. */
+    public val at: String,
+    /**
+     * One of: `bad_signature`.
+     *
+     * Always present.
+     */
+    public val reason: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopSettingsDataLastRefusal {
+            val o = ObjectReader(v, path)
+            return SetShopSettingsDataLastRefusal(
+                at = o.str("at"),
+                reason = o.str("reason"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir. */
+public class SetShopSettingsDataPluginKey(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val prefix: String,
+    /** Always present. */
+    public val name: String,
+    /**
+     * Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)
+     *
+     * Always present.
+     */
+    public val abilities: List<String>,
+    /**
+     * Kasa açıksa şubesi; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationId: String?,
+    /**
+     * Kasanın şubesinin adı; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationName: String?,
+    /**
+     * Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar
+     *
+     * Always present.
+     */
+    public val tillArchived: Boolean,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopSettingsDataPluginKey {
+            val o = ObjectReader(v, path)
+            return SetShopSettingsDataPluginKey(
+                id = o.str("id"),
+                prefix = o.str("prefix"),
+                name = o.str("name"),
+                abilities = o.req("abilities") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                tillLocationId = o.strOrNull("tillLocationId"),
+                tillLocationName = o.strOrNull("tillLocationName"),
+                tillArchived = o.bool("tillArchived"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir. */
+public class SetShopSettingsDataSettings(
+    /**
+     * Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.
+     *
+     * Always present.
+     */
+    public val tax: SetShopSettingsDataSettingsTax,
+    /**
+     * İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.
+     *
+     * One of: `code_orders`, `all`, `never`.
+     *
+     * Always present.
+     */
+    public val refundReverses: String,
+    /**
+     * Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)
+     *
+     * Always present.
+     */
+    public val holdDays: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopSettingsDataSettings {
+            val o = ObjectReader(v, path)
+            return SetShopSettingsDataSettings(
+                tax = o.req("tax") { x, y -> SetShopSettingsDataSettingsTax.read(x, y) },
+                refundReverses = o.str("refundReverses"),
+                holdDays = o.int("holdDays"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır. */
+public class SetShopSettingsDataSettingsTax(
+    /**
+     * Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val giftcard: String,
+    /**
+     * Cashback: `discount` (varsayılan) ya da `payment`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val cashback: String,
+    /**
+     * Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val voucher: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopSettingsDataSettingsTax {
+            val o = ObjectReader(v, path)
+            return SetShopSettingsDataSettingsTax(
+                giftcard = o.str("giftcard"),
+                cashback = o.str("cashback"),
+                voucher = o.str("voucher"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `SetShopSettingsDataAccepts` object. */
+public class SetShopSettingsDataAccepts(
+    /**
+     * İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.
+     *
+     * Always present.
+     */
+    public val programIds: List<String>,
+    /**
+     * Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.
+     *
+     * Always present.
+     */
+    public val ceiling: List<SetShopSettingsDataAcceptsCeilingItem>?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopSettingsDataAccepts {
+            val o = ObjectReader(v, path)
+            return SetShopSettingsDataAccepts(
+                programIds = o.req("programIds") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                ceiling = o.opt("ceiling") { x, y -> Wire.list(x, y) { v1, p1 -> SetShopSettingsDataAcceptsCeilingItem.read(v1, p1) } },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `SetShopSettingsDataAcceptsCeilingItem` object. */
+public class SetShopSettingsDataAcceptsCeilingItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopSettingsDataAcceptsCeilingItem {
+            val o = ObjectReader(v, path)
+            return SetShopSettingsDataAcceptsCeilingItem(
+                id = o.str("id"),
+                name = o.str("name"),
+                type = o.str("type"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`). */
+public class SetShopSettingsDataUnbacked(
+    /** Always present. */
+    public val count: Int,
+    /** Always present. */
+    public val lastAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopSettingsDataUnbacked {
+            val o = ObjectReader(v, path)
+            return SetShopSettingsDataUnbacked(
+                count = o.int("count"),
+                lastAt = o.strOrNull("lastAt"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `SetShopCeilingBody` object. */
+public class SetShopCeilingBody(
+    /** Required. */
+    public var programIds: List<String>,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.list("programIds", this.programIds) { e -> Out.str(e) }
+        return w.finish(extras())
+    }
+}
+
+/** The `SetShopCeilingData` object. */
+public class SetShopCeilingData(
+    /** Always present. */
+    public val id: String,
+    /**
+     * One of: `shopify`, `woocommerce`.
+     *
+     * Always present.
+     */
+    public val platform: String,
+    /** Always present. */
+    public val programId: String,
+    /** Always present. */
+    public val programName: String,
+    /** Always present. */
+    public val programType: String,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * order: her sipariş · amount: her `perAmountMinor` tutar için
+     *
+     * One of: `order`, `amount`.
+     *
+     * Always present.
+     */
+    public val rule: String,
+    /** Always present. */
+    public val perAmountMinor: Long,
+    /**
+     * Her seferinde eklenen damga/puan/ziyaret (cashback kartında tutar oranla hesaplanır)
+     *
+     * Always present.
+     */
+    public val step: Int,
+    /** Always present. */
+    public val enabled: Boolean,
+    /** Always present. */
+    public val lastOrderAt: String?,
+    /** Always present. */
+    public val createdAt: String,
+    /**
+     * Mağazanızın sipariş bildirimini göndereceği adres
+     *
+     * Always present.
+     */
+    public val webhookUrl: String,
+    /**
+     * Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı
+     *
+     * Always present.
+     */
+    public val orders: SetShopCeilingDataOrders,
+    /**
+     * Mağazadan gelen son İMZALI istek: ne zaman ve ne oldu (credited işlendi · unmatched kartı yok · below eşiğin altında · paused bağlantı kapalıyken · currency başka para birimi · duplicate zaten kayıtlı siparişin tekrarı · ignored henüz ödenmemiş sipariş (kaydedilmez) · no_id sipariş numarası yok · bad_body gövde JSON değil). Hiç gelmediyse null.
+     *
+     * Always present.
+     */
+    public val lastDelivery: SetShopCeilingDataLastDelivery?,
+    /**
+     * Bu adrese gelen ve imzası tutmadığı için reddedilen son istek (dakikada en çok bir kez yazılır). Sık görünüyorsa mağazadaki gizli anahtar bu bağlantınınki değildir. Hiç olmadıysa null.
+     *
+     * Always present.
+     */
+    public val lastRefusal: SetShopCeilingDataLastRefusal?,
+    /**
+     * Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.
+     *
+     * Always present.
+     */
+    public val pluginKey: SetShopCeilingDataPluginKey?,
+    /**
+     * Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.
+     *
+     * Always present.
+     */
+    public val shopName: String?,
+    /**
+     * Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.
+     *
+     * Always present.
+     */
+    public val settings: SetShopCeilingDataSettings,
+    /** Always present. */
+    public val accepts: SetShopCeilingDataAccepts,
+    /**
+     * Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).
+     *
+     * Always present.
+     */
+    public val unbacked: SetShopCeilingDataUnbacked,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopCeilingData {
+            val o = ObjectReader(v, path)
+            return SetShopCeilingData(
+                id = o.str("id"),
+                platform = o.str("platform"),
+                programId = o.str("programId"),
+                programName = o.str("programName"),
+                programType = o.str("programType"),
+                currency = o.str("currency"),
+                rule = o.str("rule"),
+                perAmountMinor = o.long("perAmountMinor"),
+                step = o.int("step"),
+                enabled = o.bool("enabled"),
+                lastOrderAt = o.strOrNull("lastOrderAt"),
+                createdAt = o.str("createdAt"),
+                webhookUrl = o.str("webhookUrl"),
+                orders = o.req("orders") { x, y -> SetShopCeilingDataOrders.read(x, y) },
+                lastDelivery = o.opt("lastDelivery") { x, y -> SetShopCeilingDataLastDelivery.read(x, y) },
+                lastRefusal = o.opt("lastRefusal") { x, y -> SetShopCeilingDataLastRefusal.read(x, y) },
+                pluginKey = o.opt("pluginKey") { x, y -> SetShopCeilingDataPluginKey.read(x, y) },
+                shopName = o.strOrNull("shopName"),
+                settings = o.req("settings") { x, y -> SetShopCeilingDataSettings.read(x, y) },
+                accepts = o.req("accepts") { x, y -> SetShopCeilingDataAccepts.read(x, y) },
+                unbacked = o.req("unbacked") { x, y -> SetShopCeilingDataUnbacked.read(x, y) },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı */
+public class SetShopCeilingDataOrders(
+    /** Always present. */
+    public val credited: Int,
+    /** Always present. */
+    public val unmatched: Int,
+    /** Always present. */
+    public val below: Int,
+    /** Always present. */
+    public val paused: Int,
+    /** Always present. */
+    public val currency: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopCeilingDataOrders {
+            val o = ObjectReader(v, path)
+            return SetShopCeilingDataOrders(
+                credited = o.int("credited"),
+                unmatched = o.int("unmatched"),
+                below = o.int("below"),
+                paused = o.int("paused"),
+                currency = o.int("currency"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Mağazadan gelen son İMZALI istek: ne zaman ve ne oldu (credited işlendi · unmatched kartı yok · below eşiğin altında · paused bağlantı kapalıyken · currency başka para birimi · duplicate zaten kayıtlı siparişin tekrarı · ignored henüz ödenmemiş sipariş (kaydedilmez) · no_id sipariş numarası yok · bad_body gövde JSON değil). Hiç gelmediyse null. */
+public class SetShopCeilingDataLastDelivery(
+    /** Always present. */
+    public val at: String,
+    /**
+     * One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.
+     *
+     * Always present.
+     */
+    public val result: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopCeilingDataLastDelivery {
+            val o = ObjectReader(v, path)
+            return SetShopCeilingDataLastDelivery(
+                at = o.str("at"),
+                result = o.str("result"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Bu adrese gelen ve imzası tutmadığı için reddedilen son istek (dakikada en çok bir kez yazılır). Sık görünüyorsa mağazadaki gizli anahtar bu bağlantınınki değildir. Hiç olmadıysa null. */
+public class SetShopCeilingDataLastRefusal(
+    /** Always present. */
+    public val at: String,
+    /**
+     * One of: `bad_signature`.
+     *
+     * Always present.
+     */
+    public val reason: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopCeilingDataLastRefusal {
+            val o = ObjectReader(v, path)
+            return SetShopCeilingDataLastRefusal(
+                at = o.str("at"),
+                reason = o.str("reason"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir. */
+public class SetShopCeilingDataPluginKey(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val prefix: String,
+    /** Always present. */
+    public val name: String,
+    /**
+     * Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)
+     *
+     * Always present.
+     */
+    public val abilities: List<String>,
+    /**
+     * Kasa açıksa şubesi; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationId: String?,
+    /**
+     * Kasanın şubesinin adı; değilse null
+     *
+     * Always present.
+     */
+    public val tillLocationName: String?,
+    /**
+     * Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar
+     *
+     * Always present.
+     */
+    public val tillArchived: Boolean,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopCeilingDataPluginKey {
+            val o = ObjectReader(v, path)
+            return SetShopCeilingDataPluginKey(
+                id = o.str("id"),
+                prefix = o.str("prefix"),
+                name = o.str("name"),
+                abilities = o.req("abilities") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                tillLocationId = o.strOrNull("tillLocationId"),
+                tillLocationName = o.strOrNull("tillLocationName"),
+                tillArchived = o.bool("tillArchived"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir. */
+public class SetShopCeilingDataSettings(
+    /**
+     * Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.
+     *
+     * Always present.
+     */
+    public val tax: SetShopCeilingDataSettingsTax,
+    /**
+     * İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.
+     *
+     * One of: `code_orders`, `all`, `never`.
+     *
+     * Always present.
+     */
+    public val refundReverses: String,
+    /**
+     * Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)
+     *
+     * Always present.
+     */
+    public val holdDays: Int,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopCeilingDataSettings {
+            val o = ObjectReader(v, path)
+            return SetShopCeilingDataSettings(
+                tax = o.req("tax") { x, y -> SetShopCeilingDataSettingsTax.read(x, y) },
+                refundReverses = o.str("refundReverses"),
+                holdDays = o.int("holdDays"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır. */
+public class SetShopCeilingDataSettingsTax(
+    /**
+     * Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val giftcard: String,
+    /**
+     * Cashback: `discount` (varsayılan) ya da `payment`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val cashback: String,
+    /**
+     * Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`
+     *
+     * One of: `payment`, `discount`.
+     *
+     * Always present.
+     */
+    public val voucher: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopCeilingDataSettingsTax {
+            val o = ObjectReader(v, path)
+            return SetShopCeilingDataSettingsTax(
+                giftcard = o.str("giftcard"),
+                cashback = o.str("cashback"),
+                voucher = o.str("voucher"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `SetShopCeilingDataAccepts` object. */
+public class SetShopCeilingDataAccepts(
+    /**
+     * İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.
+     *
+     * Always present.
+     */
+    public val programIds: List<String>,
+    /**
+     * Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.
+     *
+     * Always present.
+     */
+    public val ceiling: List<SetShopCeilingDataAcceptsCeilingItem>?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopCeilingDataAccepts {
+            val o = ObjectReader(v, path)
+            return SetShopCeilingDataAccepts(
+                programIds = o.req("programIds") { x, y -> Wire.list(x, y) { v1, p1 -> Wire.string(v1, p1) } },
+                ceiling = o.opt("ceiling") { x, y -> Wire.list(x, y) { v1, p1 -> SetShopCeilingDataAcceptsCeilingItem.read(v1, p1) } },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `SetShopCeilingDataAcceptsCeilingItem` object. */
+public class SetShopCeilingDataAcceptsCeilingItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val name: String,
+    /**
+     * One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.
+     *
+     * Always present.
+     */
+    public val type: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopCeilingDataAcceptsCeilingItem {
+            val o = ObjectReader(v, path)
+            return SetShopCeilingDataAcceptsCeilingItem(
+                id = o.str("id"),
+                name = o.str("name"),
+                type = o.str("type"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`). */
+public class SetShopCeilingDataUnbacked(
+    /** Always present. */
+    public val count: Int,
+    /** Always present. */
+    public val lastAt: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): SetShopCeilingDataUnbacked {
+            val o = ObjectReader(v, path)
+            return SetShopCeilingDataUnbacked(
+                count = o.int("count"),
+                lastAt = o.strOrNull("lastAt"),
             ).also { it.adopt(o.rest()) }
         }
     }

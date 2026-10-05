@@ -7,6 +7,253 @@ package com.rewloy.models
 import com.rewloy.*
 import com.rewloy.json.*
 
+/** The `HolderCheckoutCodesData` object. */
+public class HolderCheckoutCodesData(
+    /** Always present. */
+    public val online: Boolean,
+    /** Always present. */
+    public val offer: HolderCheckoutCodesDataOffer?,
+    /** Always present. */
+    public val refusal: String?,
+    /** Always present. */
+    public val holds: List<HolderCheckoutCodesDataHoldsItem>,
+    /** Always present. */
+    public val codes: List<HolderCheckoutCodesDataCodesItem>,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): HolderCheckoutCodesData {
+            val o = ObjectReader(v, path)
+            return HolderCheckoutCodesData(
+                online = o.bool("online"),
+                offer = o.opt("offer") { x, y -> HolderCheckoutCodesDataOffer.read(x, y) },
+                refusal = o.strOrNull("refusal"),
+                holds = o.req("holds") { x, y -> Wire.list(x, y) { v1, p1 -> HolderCheckoutCodesDataHoldsItem.read(v1, p1) } },
+                codes = o.req("codes") { x, y -> Wire.list(x, y) { v1, p1 -> HolderCheckoutCodesDataCodesItem.read(v1, p1) } },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `HolderCheckoutCodesDataOffer` object. */
+public class HolderCheckoutCodesDataOffer(
+    /**
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /** Always present. */
+    public val currency: String,
+    /** Always present. */
+    public val maxMinor: Long?,
+    /** Always present. */
+    public val percent: Int?,
+    /** Always present. */
+    public val amountMinor: Long?,
+    /**
+     * Kupon ve indirim kartı: kullanım hakkı sınırlıysa kalan hak (açık ayırmalar düşülmüş); sınırsızsa ve diğer kartlarda null. 1 ise kod son hakkı ayırır.
+     *
+     * Always present.
+     */
+    public val usesLeft: Int?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): HolderCheckoutCodesDataOffer {
+            val o = ObjectReader(v, path)
+            return HolderCheckoutCodesDataOffer(
+                kind = o.str("kind"),
+                currency = o.str("currency"),
+                maxMinor = o.longOrNull("maxMinor"),
+                percent = o.intOrNull("percent"),
+                amountMinor = o.longOrNull("amountMinor"),
+                usesLeft = o.intOrNull("usesLeft"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `HolderCheckoutCodesDataHoldsItem` object. */
+public class HolderCheckoutCodesDataHoldsItem(
+    /** Always present. */
+    public val amountMinor: Long,
+    /** Always present. */
+    public val heldUntil: String,
+    /** Always present. */
+    public val shop: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): HolderCheckoutCodesDataHoldsItem {
+            val o = ObjectReader(v, path)
+            return HolderCheckoutCodesDataHoldsItem(
+                amountMinor = o.long("amountMinor"),
+                heldUntil = o.str("heldUntil"),
+                shop = o.str("shop"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `HolderCheckoutCodesDataCodesItem` object. */
+public class HolderCheckoutCodesDataCodesItem(
+    /** Always present. */
+    public val id: String,
+    /** Always present. */
+    public val last4: String,
+    /** Always present. */
+    public val capMinor: Long?,
+    /**
+     * open kullanılabilir · attached bir siparişe bağlandı · expired süresi doldu · cancelled iptal edildi
+     *
+     * One of: `open`, `attached`, `expired`, `cancelled`.
+     *
+     * Always present.
+     */
+    public val state: String,
+    /** Always present. */
+    public val firstUseBy: String,
+    /** Always present. */
+    public val attachBy: String,
+    /** Always present. */
+    public val createdAt: String,
+    /** Always present. */
+    public val order: HolderCheckoutCodesDataCodesItemOrder?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): HolderCheckoutCodesDataCodesItem {
+            val o = ObjectReader(v, path)
+            return HolderCheckoutCodesDataCodesItem(
+                id = o.str("id"),
+                last4 = o.str("last4"),
+                capMinor = o.longOrNull("capMinor"),
+                state = o.str("state"),
+                firstUseBy = o.str("firstUseBy"),
+                attachBy = o.str("attachBy"),
+                createdAt = o.str("createdAt"),
+                order = o.opt("order") { x, y -> HolderCheckoutCodesDataCodesItemOrder.read(x, y) },
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `HolderCheckoutCodesDataCodesItemOrder` object. */
+public class HolderCheckoutCodesDataCodesItemOrder(
+    /** Always present. */
+    public val shop: String,
+    /** Always present. */
+    public val amountMinor: Long,
+    /**
+     * One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.
+     *
+     * Always present.
+     */
+    public val state: String,
+    /** Always present. */
+    public val heldUntil: String?,
+    /**
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /**
+     * Bırakılan ya da süresi dolan ayırmada kimin ya da neyin bıraktığı: cancelled mağaza siparişi iptal etti · failed ödeme tamamlanmadı · shop mağaza bıraktı · merchant işletme elle bıraktı · expired süre doldu
+     *
+     * One of: `cancelled`, `failed`, `shop`, `merchant`, `expired`, null.
+     *
+     * Always present.
+     */
+    public val releaseReason: String?,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): HolderCheckoutCodesDataCodesItemOrder {
+            val o = ObjectReader(v, path)
+            return HolderCheckoutCodesDataCodesItemOrder(
+                shop = o.str("shop"),
+                amountMinor = o.long("amountMinor"),
+                state = o.str("state"),
+                heldUntil = o.strOrNull("heldUntil"),
+                kind = o.str("kind"),
+                releaseReason = o.strOrNull("releaseReason"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
+/** The `MintHolderCheckoutCodeBody` object. */
+public class MintHolderCheckoutCodeBody(
+    /** `amountMinor`. */
+    public var amountMinor: Int? = null,
+) : RewloyObject() {
+    internal override fun toJsonValue(): JsonObject {
+        val w = ObjectWriter()
+        w.int("amountMinor", this.amountMinor)
+        return w.finish(extras())
+    }
+}
+
+/** The `MintHolderCheckoutCodeData` object. */
+public class MintHolderCheckoutCodeData(
+    /** Always present. */
+    public val id: String,
+    /**
+     * Kod: yalnız bu yanıtta; Rewloy saklamaz. Kişiye gösterin, "Kopyala" ile verin; günlüğe, adrese ya da bildirime yazmayın.
+     *
+     * Always present.
+     */
+    public val code: String,
+    /**
+     * Bakiyeli kartta kodun en fazla düşebileceği tutar
+     *
+     * Always present.
+     */
+    public val capMinor: Long?,
+    /** Always present. */
+    public val currency: String,
+    /**
+     * One of: `balance`, `percent`, `amount`, `link`.
+     *
+     * Always present.
+     */
+    public val kind: String,
+    /** Always present. */
+    public val percent: Int?,
+    /**
+     * Kupon: online tutarı
+     *
+     * Always present.
+     */
+    public val amountMinor: Long?,
+    /**
+     * Kod bu ana kadar ödeme adımında kullanılmaya başlanmalı (15 dakika)
+     *
+     * Always present.
+     */
+    public val firstUseBy: String,
+    /**
+     * Kullanılmaya başlanan kod bu ana kadar bir siparişe bağlanmalı (45 dakika)
+     *
+     * Always present.
+     */
+    public val attachBy: String,
+) : RewloyObject() {
+    internal companion object {
+        fun read(v: JsonValue, path: String): MintHolderCheckoutCodeData {
+            val o = ObjectReader(v, path)
+            return MintHolderCheckoutCodeData(
+                id = o.str("id"),
+                code = o.str("code"),
+                capMinor = o.longOrNull("capMinor"),
+                currency = o.str("currency"),
+                kind = o.str("kind"),
+                percent = o.intOrNull("percent"),
+                amountMinor = o.longOrNull("amountMinor"),
+                firstUseBy = o.str("firstUseBy"),
+                attachBy = o.str("attachBy"),
+            ).also { it.adopt(o.rest()) }
+        }
+    }
+}
+
 /** Query parameters of `holderCards`. */
 public class HolderCardsQuery(
     /** Yalnız bu işletmenin kartları (`merchantSlug`) */
@@ -3153,9 +3400,9 @@ public class HolderNotificationsItem(
     /** Always present. */
     public val id: String,
     /**
-     * campaign: bir işletmenin kampanyası; automation: otomatik mesaj ya da mesaj dizisinin adımı; reward_ready: "Ödülünüz hazır"; test: kişinin kendi denemesi; security: hesabın giriş yolunun değişmesi (yolda ya da yapıldı) ya da onaylanan bir kurtarma talebi
+     * campaign: bir işletmenin kampanyası; automation: otomatik mesaj ya da mesaj dizisinin adımı; reward_ready: "Ödülünüz hazır"; test: kişinin kendi denemesi; security: hesabın giriş yolunun değişmesi (yolda ya da yapıldı) ya da onaylanan bir kurtarma talebi; checkout_code: kartlarınızdan biri için online ödeme kodu oluşturuldu (bir İşlem bildirimi; kodu oluşturan cihaza gitmez)
      *
-     * One of: `campaign`, `automation`, `reward_ready`, `test`, `security`.
+     * One of: `campaign`, `automation`, `reward_ready`, `test`, `security`, `checkout_code`.
      *
      * Always present.
      */
