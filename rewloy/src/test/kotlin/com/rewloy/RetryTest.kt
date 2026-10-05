@@ -188,9 +188,9 @@ class RetryTest {
         rig.server.enqueue(Answer(503, "x"), Answer(200, Fixtures.PASS))
         // createSegment takes no key by itself; one given as a header counts.
         assertFailsWith<RewloyException> {
-            rig.rewloy.createSegment(CreateSegmentBody("S", com.rewloy.models.CreateSegmentBodyRule()), RequestOptions(headers = mapOf("Idempotency-Key" to "mine")))
+            rig.rewloy.createSegment(CreateSegmentBody("S", com.rewloy.models.CreateSegmentBodyRule()), RequestOptions(headers = mapOf("Idempotency-Key" to "mine-000001")))
         }
         assertEquals(2, rig.server.received.size)
-        assertEquals(listOf("mine", "mine"), rig.server.received.map { it.header("idempotency-key") })
+        assertEquals(listOf("mine-000001", "mine-000001"), rig.server.received.map { it.header("idempotency-key") })
     }
 }
