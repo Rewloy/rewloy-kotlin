@@ -684,6 +684,18 @@ public class ListWebhooksItem(
      * Always present.
      */
     public val createdByKey: ListWebhooksItemCreatedByKey?,
+    /**
+     * Açık webhook bekletiliyor: alıcı art arda 2 kez `5xx`, `429` verdi ya da yanıt vermedi; teslimler bu ana kadar ertelenir, sonra kendiliğinden yeniden denenir (60 saniye). Bekletilmiyorsa ya da webhook kapalıysa null (1.2.0).
+     *
+     * Always present.
+     */
+    public val pausedUntil: String?,
+    /**
+     * Webhook'u kurallar kapattı ve bekleyen teslimleri saklanıyor: bu andan önce açılırsa (`PATCH` `{ "active": true }`) kaldığı yerden devam eder, saklananlar hemen gönderilir ve kapalıyken olan olaylar da gelir. Kapanıştan 24 saat sonrası. Açıksa, bir kişi ya da anahtar kapattıysa ya da süre geçtiyse null (1.2.0).
+     *
+     * Always present.
+     */
+    public val resumableUntil: String?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): ListWebhooksItem {
@@ -699,6 +711,8 @@ public class ListWebhooksItem(
                 week = o.req("week") { x, y -> ListWebhooksItemWeek.read(x, y) },
                 lastDelivered = o.strOrNull("lastDelivered"),
                 createdByKey = o.opt("createdByKey") { x, y -> ListWebhooksItemCreatedByKey.read(x, y) },
+                pausedUntil = o.strOrNull("pausedUntil"),
+                resumableUntil = o.strOrNull("resumableUntil"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -821,6 +835,18 @@ public class CreateWebhookDataWebhook(
      * Always present.
      */
     public val createdByKey: CreateWebhookDataWebhookCreatedByKey?,
+    /**
+     * Açık webhook bekletiliyor: alıcı art arda 2 kez `5xx`, `429` verdi ya da yanıt vermedi; teslimler bu ana kadar ertelenir, sonra kendiliğinden yeniden denenir (60 saniye). Bekletilmiyorsa ya da webhook kapalıysa null (1.2.0).
+     *
+     * Always present.
+     */
+    public val pausedUntil: String?,
+    /**
+     * Webhook'u kurallar kapattı ve bekleyen teslimleri saklanıyor: bu andan önce açılırsa (`PATCH` `{ "active": true }`) kaldığı yerden devam eder, saklananlar hemen gönderilir ve kapalıyken olan olaylar da gelir. Kapanıştan 24 saat sonrası. Açıksa, bir kişi ya da anahtar kapattıysa ya da süre geçtiyse null (1.2.0).
+     *
+     * Always present.
+     */
+    public val resumableUntil: String?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): CreateWebhookDataWebhook {
@@ -836,6 +862,8 @@ public class CreateWebhookDataWebhook(
                 week = o.req("week") { x, y -> CreateWebhookDataWebhookWeek.read(x, y) },
                 lastDelivered = o.strOrNull("lastDelivered"),
                 createdByKey = o.opt("createdByKey") { x, y -> CreateWebhookDataWebhookCreatedByKey.read(x, y) },
+                pausedUntil = o.strOrNull("pausedUntil"),
+                resumableUntil = o.strOrNull("resumableUntil"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -918,6 +946,18 @@ public class GetWebhookData(
      * Always present.
      */
     public val createdByKey: GetWebhookDataCreatedByKey?,
+    /**
+     * Açık webhook bekletiliyor: alıcı art arda 2 kez `5xx`, `429` verdi ya da yanıt vermedi; teslimler bu ana kadar ertelenir, sonra kendiliğinden yeniden denenir (60 saniye). Bekletilmiyorsa ya da webhook kapalıysa null (1.2.0).
+     *
+     * Always present.
+     */
+    public val pausedUntil: String?,
+    /**
+     * Webhook'u kurallar kapattı ve bekleyen teslimleri saklanıyor: bu andan önce açılırsa (`PATCH` `{ "active": true }`) kaldığı yerden devam eder, saklananlar hemen gönderilir ve kapalıyken olan olaylar da gelir. Kapanıştan 24 saat sonrası. Açıksa, bir kişi ya da anahtar kapattıysa ya da süre geçtiyse null (1.2.0).
+     *
+     * Always present.
+     */
+    public val resumableUntil: String?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): GetWebhookData {
@@ -933,6 +973,8 @@ public class GetWebhookData(
                 week = o.req("week") { x, y -> GetWebhookDataWeek.read(x, y) },
                 lastDelivered = o.strOrNull("lastDelivered"),
                 createdByKey = o.opt("createdByKey") { x, y -> GetWebhookDataCreatedByKey.read(x, y) },
+                pausedUntil = o.strOrNull("pausedUntil"),
+                resumableUntil = o.strOrNull("resumableUntil"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -1027,6 +1069,18 @@ public class SetWebhookStatusData(
      * Always present.
      */
     public val createdByKey: SetWebhookStatusDataCreatedByKey?,
+    /**
+     * Açık webhook bekletiliyor: alıcı art arda 2 kez `5xx`, `429` verdi ya da yanıt vermedi; teslimler bu ana kadar ertelenir, sonra kendiliğinden yeniden denenir (60 saniye). Bekletilmiyorsa ya da webhook kapalıysa null (1.2.0).
+     *
+     * Always present.
+     */
+    public val pausedUntil: String?,
+    /**
+     * Webhook'u kurallar kapattı ve bekleyen teslimleri saklanıyor: bu andan önce açılırsa (`PATCH` `{ "active": true }`) kaldığı yerden devam eder, saklananlar hemen gönderilir ve kapalıyken olan olaylar da gelir. Kapanıştan 24 saat sonrası. Açıksa, bir kişi ya da anahtar kapattıysa ya da süre geçtiyse null (1.2.0).
+     *
+     * Always present.
+     */
+    public val resumableUntil: String?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): SetWebhookStatusData {
@@ -1042,6 +1096,8 @@ public class SetWebhookStatusData(
                 week = o.req("week") { x, y -> SetWebhookStatusDataWeek.read(x, y) },
                 lastDelivered = o.strOrNull("lastDelivered"),
                 createdByKey = o.opt("createdByKey") { x, y -> SetWebhookStatusDataCreatedByKey.read(x, y) },
+                pausedUntil = o.strOrNull("pausedUntil"),
+                resumableUntil = o.strOrNull("resumableUntil"),
             ).also { it.adopt(o.rest()) }
         }
     }
@@ -1238,6 +1294,18 @@ public class RotateWebhookSecretDataWebhook(
      * Always present.
      */
     public val createdByKey: RotateWebhookSecretDataWebhookCreatedByKey?,
+    /**
+     * Açık webhook bekletiliyor: alıcı art arda 2 kez `5xx`, `429` verdi ya da yanıt vermedi; teslimler bu ana kadar ertelenir, sonra kendiliğinden yeniden denenir (60 saniye). Bekletilmiyorsa ya da webhook kapalıysa null (1.2.0).
+     *
+     * Always present.
+     */
+    public val pausedUntil: String?,
+    /**
+     * Webhook'u kurallar kapattı ve bekleyen teslimleri saklanıyor: bu andan önce açılırsa (`PATCH` `{ "active": true }`) kaldığı yerden devam eder, saklananlar hemen gönderilir ve kapalıyken olan olaylar da gelir. Kapanıştan 24 saat sonrası. Açıksa, bir kişi ya da anahtar kapattıysa ya da süre geçtiyse null (1.2.0).
+     *
+     * Always present.
+     */
+    public val resumableUntil: String?,
 ) : RewloyObject() {
     internal companion object {
         fun read(v: JsonValue, path: String): RotateWebhookSecretDataWebhook {
@@ -1253,6 +1321,8 @@ public class RotateWebhookSecretDataWebhook(
                 week = o.req("week") { x, y -> RotateWebhookSecretDataWebhookWeek.read(x, y) },
                 lastDelivered = o.strOrNull("lastDelivered"),
                 createdByKey = o.opt("createdByKey") { x, y -> RotateWebhookSecretDataWebhookCreatedByKey.read(x, y) },
+                pausedUntil = o.strOrNull("pausedUntil"),
+                resumableUntil = o.strOrNull("resumableUntil"),
             ).also { it.adopt(o.rest()) }
         }
     }

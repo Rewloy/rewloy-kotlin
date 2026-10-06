@@ -7,6 +7,8 @@ import com.rewloy.models.ListAllBatchesQuery
 import com.rewloy.models.ListPassOperationsQuery
 import com.rewloy.models.RecordSaleBody
 import com.rewloy.models.ResetTestEnvironmentBody
+import com.rewloy.models.SendBatchLinkBody
+import com.rewloy.models.SetWebhookStatusBody
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -18,7 +20,12 @@ class V120Test {
     // Answers with every required field, as the API 1.2.0 document lists them.
     private val operation = """{"id":"0192f7c1-0000-7000-8000-0000000000aa","kind":"earn","delta":1,"unit":"stamp","currency":null,"at":"2026-10-06T10:00:00.000Z","occurredAt":null,"locationId":"0192f7c1-0000-7000-8000-0000000000aa","location":"Şube","reference":null,"source":"api","byCaller":true,"saleKey":"kasa3-z0187-fis0042","undoWith":"sale/reverse","reversible":true,"reversedBy":null,"reversedAt":null,"reverses":null}"""
     private val batch = """{"id":"0192f7c1-0000-7000-8000-0000000000aa","code":"HEDIYE","claimUrl":"https://rewloy.com/k/x","name":"Bahar","status":"open","state":"archived","registered":1,"active":1,"redeemed":0,"createdAt":"2026-10-06T10:00:00.000Z","closedAt":null,"validUntil":null,"programId":"0192f7c1-0000-7000-8000-0000000000aa","programName":"Kahve","type":"giftcard","currency":"TRY","capacity":100,"perPerson":1,"valueMinor":5000,"offerText":null,"percent":null,"usage":"once","usageLimit":null,"outstandingMinor":5000}"""
-    private val rotated = """{"data":{"webhook":{"id":"0192f7c1-0000-7000-8000-0000000000aa","url":"https://ornek.com/h","events":[],"status":"active","failures":0,"disabledReason":null,"createdAt":"2026-10-06T10:00:00.000Z","week":{"delivered":0,"failed":0,"pending":0},"lastDelivered":null,"createdByKey":null},"secret":"whsec_new","previousValidUntil":"2026-10-06T10:00:00.000Z"}}"""
+    private val rotated = """{"data":{"webhook":{"id":"0192f7c1-0000-7000-8000-0000000000aa","url":"https://ornek.com/h","events":[],"status":"active","failures":0,"disabledReason":null,"createdAt":"2026-10-06T10:00:00.000Z","week":{"delivered":0,"failed":0,"pending":0},"lastDelivered":null,"createdByKey":null,"pausedUntil":null,"resumableUntil":null},"secret":"whsec_new","previousValidUntil":"2026-10-06T10:00:00.000Z"}}"""
+    // A webhook object as 1.2.0 answers: pausedUntil and resumableUntil are always present.
+    private fun webhookRow(pausedUntil: String?, resumableUntil: String?): String {
+        fun q(v: String?) = if (v == null) "null" else "\"$v\""
+        return """{"id":"0192f7c1-0000-7000-8000-0000000000aa","url":"https://ornek.com/h","events":["pass.activity"],"status":"active","failures":0,"disabledReason":null,"createdAt":"2026-10-06T09:00:00.000Z","week":{"delivered":3,"failed":0,"pending":1},"lastDelivered":"2026-10-06T09:30:00.000Z","createdByKey":null,"pausedUntil":${q(pausedUntil)},"resumableUntil":${q(resumableUntil)}}"""
+    }
     private val reset = """{"data":{"merchantId":"0192f7c1-0000-7000-8000-0000000000aa","name":"Kahve · Test","closed":null,"created":false,"keysRevoked":true,"deleted":{"customers":2,"cards":3,"codes":0,"outbox":1,"webhookDeliveries":4},"kept":{"programs":1,"keys":0,"webhooks":0},"walletCardsVoided":0}}"""
     private val created = """{"data":{"key":{"id":"0192f7c1-0000-7000-8000-0000000000aa","name":"POS","prefix":"abc","status":"active","role":"Kasa","scopeText":"Şube","tier":"standard","ipAllowlist":[],"createdAt":"2026-10-06T10:00:00.000Z","expiresAt":null,"expired":false,"lastUsedAt":null,"stale":false,"actions30":0,"refused30":0,"shopId":null,"pos":{"locationId":"0192f7c1-0000-7000-8000-0000000000aa","register":"Kasa 1"},"requestsToday":0},"token":"rwk_x_y","baseUrl":"https://app.rewloy.com"}}"""
 
@@ -100,6 +107,37 @@ class V120Test {
         assertEquals(ErrorCode.PROGRAM_ARCHIVED, e.code)
     }
 
+    @Test
+    fun `reads the webhook state fields, a date-time or null`() = Rig { apiKey("rwk_abc") }.test { rig ->
+        rig.server.enqueue(
+            Answer(200, """{"data":[${webhookRow("2026-10-06T10:01:00.000Z", null)},${webhookRow(null, "2026-10-07T09:45:00.000Z")}]}"""),
+            Answer(200, """{"data":${webhookRow(null, "2026-10-07T09:45:00.000Z")}}"""),
+            Answer(200, """{"data":${webhookRow("2026-10-06T10:01:00.000Z", null)}}"""),
+        )
+        val rows = rig.rewloy.listWebhooks()
+        assertEquals("2026-10-06T10:01:00.000Z", rows[0].pausedUntil)
+        assertNull(rows[0].resumableUntil)
+        assertNull(rows[1].pausedUntil)
+        assertEquals("2026-10-07T09:45:00.000Z", rows[1].resumableUntil)
+
+        assertEquals("2026-10-07T09:45:00.000Z", rig.rewloy.getWebhook(webhook).resumableUntil)
+        // setWebhookStatus is a PATCH, which the default JVM transport cannot send (see ClientTest); its model is the same webhook object.
+        assertEquals("2026-10-06T10:01:00.000Z", rig.rewloy.getWebhook(webhook).pausedUntil)
+    }
+
+    @Test
+    fun `surfaces what sendBatchLink refuses`() = Rig { apiKey("rwk_abc") }.test { rig ->
+        fun refusal(status: Int, code: String) = Answer(status, """{"error":{"code":"$code","message":"$code","requestId":"req-1","status":$status}}""")
+        rig.server.enqueue(refusal(410, "BATCH_CLOSED"), refusal(410, "BATCH_EXPIRED"), refusal(410, "BATCH_FULL"), refusal(409, "PROGRAM_ARCHIVED"))
+        val expected = listOf(410 to ErrorCode.BATCH_CLOSED, 410 to ErrorCode.BATCH_EXPIRED, 410 to ErrorCode.BATCH_FULL, 409 to ErrorCode.PROGRAM_ARCHIVED)
+        for ((status, code) in expected) {
+            val e = assertFailsWith<RewloyException> { rig.rewloy.sendBatchLink("b1", SendBatchLinkBody(email = "ali@ornek.com")) }
+            assertEquals(status, e.status, code)
+            assertEquals(code, e.code)
+        }
+        assertEquals("/v1/batches/b1/send", rig.server.received[0].path)
+    }
+
     /** The README's 1.2.0 snippets: compiled, not run. */
     @Suppress("unused")
     private fun compileOnly(rewloy: Rewloy, seri: String, webhookId: String, hamGovde: String, imzaBasligi: String, eskiSir: String) {
@@ -120,5 +158,11 @@ class V120Test {
         val olay = Webhook.verify(hamGovde, imzaBasligi, listOf(yeni, eskiSir))
         println(olay.type)
         rewloy.createApiKey(CreateApiKeyBodyPos(kind = "pos", locationId = webhookId, password = "x", register = "Kasa 1"))
+
+        for (w in rewloy.listWebhooks()) {
+            w.pausedUntil?.let { println("${w.url}: $it anına kadar bekletiliyor") }
+            w.resumableUntil?.let { println("${w.url}: $it öncesinde açın, kaldığı yerden sürer") }
+        }
+        rewloy.setWebhookStatus(webhookId, SetWebhookStatusBody(active = true))
     }
 }

@@ -11,6 +11,7 @@ import com.rewloy.error
 import com.rewloy.test
 import com.rewloy.gzip
 import com.rewloy.models.PassActionBody
+import com.rewloy.models.SetWebhookStatusBody
 import com.rewloy.models.UpdateLocationBody
 import java.util.concurrent.CancellationException
 import kotlin.concurrent.thread
@@ -52,6 +53,16 @@ class OkHttpTransportTest {
         assertFailsWith<RewloyException> { rig.rewloy.updateLocation("loc", UpdateLocationBody()) }
         assertEquals("PATCH", rig.server.received.single().method)
         assertEquals("{}", rig.server.received.single().body)
+    }
+
+    @Test
+    fun `setWebhookStatus reads pausedUntil and resumableUntil from the answer to a PATCH`() = rig().test { rig ->
+        rig.server.enqueue(Answer(200, """{"data":{"id":"0192f7c1-0000-7000-8000-0000000000aa","url":"https://ornek.com/h","events":["pass.activity"],"status":"active","failures":0,"disabledReason":null,"createdAt":"2026-10-06T09:00:00.000Z","week":{"delivered":3,"failed":0,"pending":1},"lastDelivered":null,"createdByKey":null,"pausedUntil":"2026-10-06T10:01:00.000Z","resumableUntil":null}}"""))
+        val webhook = rig.rewloy.setWebhookStatus("0192f7c1-0000-7000-8000-0000000000aa", SetWebhookStatusBody(active = true))
+        assertEquals("PATCH", rig.server.received.single().method)
+        assertEquals("""{"active":true}""", rig.server.received.single().body)
+        assertEquals("2026-10-06T10:01:00.000Z", webhook.pausedUntil)
+        assertNull(webhook.resumableUntil)
     }
 
     @Test
