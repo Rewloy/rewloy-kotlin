@@ -52,9 +52,12 @@ dependencies {
     testRuntimeOnly(libs.junit.launcher)
 }
 
+val shippedSources: SourceSet = sourceSets.main.get()
 animalsniffer {
     // The library's own bytecode against Android 5.0's API. The Kotlin standard library is a dependency, not the platform.
     ignore("kotlin.*", "org.jetbrains.annotations.*")
+    // Only the shipped code: the live tests run on a desktop JDK against a development server.
+    sourceSets = listOf(shippedSources)
 }
 
 tasks.test {
@@ -70,6 +73,45 @@ tasks.test {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
+
+// The live tests (docs: README, "Live tests"): the library against a running development Rewloy, through
+// `./gradlew liveTest`. They are a source set of their own, so `test` and `check` never run them and never need a
+// network; without REWLOY_BASE_URL and REWLOY_API_KEY the task skips cleanly.
+val liveTestSourceSet: SourceSet = sourceSets.create("liveTest") {
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += sourceSets.main.get().output
+}
+configurations[liveTestSourceSet.implementationConfigurationName].extendsFrom(configurations.testImplementation.get())
+configurations[liveTestSourceSet.runtimeOnlyConfigurationName].extendsFrom(configurations.testRuntimeOnly.get())
+dependencies {
+    // The summary listener is written against the launcher API.
+    "liveTestCompileOnly"(platform(libs.junit.bom))
+    "liveTestCompileOnly"(libs.junit.launcher)
+}
+tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileLiveTestKotlin") {
+    // The shipped code declares its API explicitly (explicitApi above); a test does not have to.
+    explicitApiMode.set(org.jetbrains.kotlin.gradle.dsl.ExplicitApiMode.Disabled)
+}
+
+tasks.register<Test>("liveTest") {
+    group = "verification"
+    description = "Runs the library against a development Rewloy (REWLOY_BASE_URL, REWLOY_API_KEY = a rwk_test_ key). Skips without them."
+    testClassesDirs = liveTestSourceSet.output.classesDirs
+    classpath = liveTestSourceSet.runtimeClasspath
+    useJUnitPlatform()
+    // Always runs, never from the cache: its inputs are a server, not files.
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+    // The environment (REWLOY_BASE_URL, REWLOY_API_KEY, REWLOY_STAFF_SESSION) reaches the test JVM as it is.
+    testLogging {
+        showStandardStreams = true
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.SHORT
+    }
+}
+
+// `check` compiles the live tests (so they cannot rot) but never runs them.
+tasks.named("check") { dependsOn("liveTestClasses") }
 
 // The test helpers (the stub server) are for this repository's modules, not for Maven Central.
 (components["java"] as AdhocComponentWithVariants).apply {

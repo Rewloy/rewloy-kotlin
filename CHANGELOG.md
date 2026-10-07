@@ -5,6 +5,13 @@ https://rewloy.com/gelistiriciler/degisiklikler
 
 This library's releases. The API's own changes are listed at the link above.
 
+## Unreleased
+
+- **Live tests** (`./gradlew liveTest`, README "Canlı testler" / "Live tests"):
+  the library against a development server, end to end; refuses a server that is
+  not `"environment": "dev"` and any key that is not `rwk_test_`. A source set
+  and a task of their own: `test` and `check` are unchanged. docs/LIVE-TESTS.md.
+
 ## 0.2.4 (2026-10-06)
 
 Rewloy API 1.2.0'ı izler (API sürümü, `info.version`): 260 işlem (0.2.2'de 256),

@@ -733,6 +733,39 @@ yapabilir, sayfalı bir listeyi dolaşabilirsiniz.
 - CI her gün canlı belgeyi okur ve bir değişiklik varsa bir pull request açar.
 - Kararlar: [docs/DECISIONS.md](docs/DECISIONS.md).
 
+### Canlı testler
+
+Sürüm adayı yayına çıkmadan önce **geliştirme (dev) sunucusunda**, kütüphane
+üzerinden uçtan uca denenir. Bu testler ayrı bir Gradle görevidir; `./gradlew
+test` ve `check` onları koşmaz, ağa çıkmaz.
+
+```sh
+REWLOY_BASE_URL=https://<dev sunucusu> REWLOY_API_KEY=rwk_test_… ./gradlew liveTest
+```
+
+- `REWLOY_BASE_URL` ve `REWLOY_API_KEY` yoksa görev **atlanır** (hata değildir).
+  İsteğe bağlı `REWLOY_STAFF_SESSION` (`rws_…`, bir kişinin oturumu) yalnız son
+  adım içindir: test sıfırlamasını yapar. Anahtar bunu yapamaz
+  (`403 CREDENTIAL_NOT_ALLOWED`); oturum yoksa bu adım o reddi doğrular ve
+  özette "NOTE" olarak yazar, müşteriler ve kartlar test ortamında kalır.
+- **Hiçbir şey göndermeden önce** `GET /v1/meta` `"environment": "dev"`
+  demelidir (başka bir değer ya da alanın olmaması: `REFUSED`, çıkış kodu sıfır
+  değil) ve anahtar `rwk_test_` ile başlamalı, yanıtlar `Rewloy-Mode: test`
+  olmalıdır. Canlıya karşı koşmaz.
+- Kapsam: `getMeta` ve işletme, programlar (damga ve hediye kartı oluşturma,
+  listeleme), kart verme ve okuma ve kasa görünümü, `recordSale`, `passAction`
+  (damga, ödül, harcama), işlem listesi, `reverseSale` ve `reverseAction`,
+  müşteri arama, kodlar (`createBatch`, `listBatches`, `listAllBatches`,
+  `sendBatchLink` reddi: `BATCH_CLOSED`, `BATCH_FULL`, `BATCH_EXPIRED`, arşivdeki
+  program), webhook (oluştur, listele, sırrı yenile, sil), `Idempotency-Key`
+  tekrarı, `RateLimit-*` başlıkları, hata nesnesi (`code`, `status`,
+  `requestId`), sayfalama, Java'dan çağrı ve sonda temizlik ile
+  `resetTestEnvironment`. Oluşturduğu programları arşivler.
+- Çıktı, alan başına (geçti / kaldı / atlandı) kısa bir özettir; herhangi bir
+  hatada çıkış kodu sıfırdan farklıdır. Henüz kapsamadıkları (0.3.0'da
+  yeniden üretimle gelecek işlemler) [docs/LIVE-TESTS.md](docs/LIVE-TESTS.md)'de
+  listelidir.
+
 ### Yayımlamak
 
 Bir sürüm `v*` etiketiyle yayımlanır. `.github/workflows/release.yml` etiketin
@@ -1073,6 +1106,40 @@ anyway. The codes are in the `ErrorCode` constants (`ErrorCode.BATCH_FULL`…).
 Android's `HttpURLConnection` sends `PATCH`; the desktop JDK's does not (12 of
 the 260 operations are `PATCH`). Up to Java 11 the library works around it; from
 Java 12 on, use the OkHttp transport (`com.rewloy:rewloy-okhttp`).
+
+### Live tests
+
+Before a release candidate goes live it is tried **on the development (dev)
+server**, end to end, through this library. The tests are a Gradle task of
+their own; `./gradlew test` and `check` never run them and never touch the
+network.
+
+```sh
+REWLOY_BASE_URL=https://<dev server> REWLOY_API_KEY=rwk_test_… ./gradlew liveTest
+```
+
+- Without `REWLOY_BASE_URL` and `REWLOY_API_KEY` the task **skips** (not a
+  failure). The optional `REWLOY_STAFF_SESSION` (`rws_…`, a person's session) is
+  for the last step only: the test reset, which an API key may not do
+  (`403 CREDENTIAL_NOT_ALLOWED`). Without it that step checks the refusal and
+  says so as a "NOTE" in the summary; the run's customers and cards stay in the
+  test business.
+- **Before anything is sent that changes data**, `GET /v1/meta` must say
+  `"environment": "dev"` (any other value, or no field: `REFUSED`, non-zero
+  exit), the key must start with `rwk_test_`, and the answers must carry
+  `Rewloy-Mode: test`. It never runs against live.
+- Covers: `getMeta` and business; programs (create a stamp and a gift card
+  program, list); issuing and reading cards and the till view; `recordSale`;
+  `passAction` (stamps, reward, spend); the operations list; `reverseSale` and
+  `reverseAction`; customer search; codes (`createBatch`, `listBatches`,
+  `listAllBatches`, the `sendBatchLink` refusals `BATCH_CLOSED`, `BATCH_FULL`,
+  `BATCH_EXPIRED`, an archived program); webhooks (create, list, rotate the
+  secret, delete); `Idempotency-Key` replay; the `RateLimit-*` headers; the error
+  object (`code`, `status`, `requestId`); pagination; a Java consumer; and, at
+  the end, clean-up (programs are archived) and `resetTestEnvironment`.
+- The output is a short summary per area (passed / failed / skipped); any
+  failure exits non-zero. What it does not cover yet (operations a later
+  generation adds) is listed in [docs/LIVE-TESTS.md](docs/LIVE-TESTS.md).
 
 ### Security and licence
 
