@@ -170,7 +170,8 @@ class BatchesLiveTest {
 @Order(8)
 @DisplayName("webhooks")
 class WebhooksLiveTest {
-    private val unresolvable = "https://rewloy-live-test.invalid/hook"
+    // A public https address that resolves: the rule is the same in a test and a live business, so a refusal is a failure.
+    private val unresolvable = "https://example.com/rewloy-live-tests/kt-${Live.runId}"
 
     @Test
     @Order(1)
@@ -184,15 +185,7 @@ class WebhooksLiveTest {
     @Order(2)
     fun `create, list, rotate the secret and delete a webhook`() {
         val event = Live.rewloy.webhookEvents().events.first().event
-        val created = try {
-            Live.rewloy.createWebhook(CreateWebhookBody(unresolvable, listOf(event)))
-        } catch (e: RewloyException) {
-            // A live-like server refuses an address that does not resolve to a public one, as documented.
-            assertEquals(422, e.status)
-            assertEquals("BAD_WEBHOOK_URL", e.code)
-            e.assertIsApiError()
-            return
-        }
+        val created = Live.rewloy.createWebhook(CreateWebhookBody(unresolvable, listOf(event)))
         val id = created.webhook.id
         Live.onCleanup("delete webhook $id") { Live.rewloy.deleteWebhook(id) }
         assertTrue(created.secret.startsWith("whsec_"), "secret")
