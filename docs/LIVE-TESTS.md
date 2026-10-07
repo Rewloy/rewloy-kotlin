@@ -51,31 +51,49 @@ REWLOY_BASE_URL=https://<dev server> REWLOY_API_KEY=rwk_test_… ./gradlew liveT
   `Idempotency-Key` answers `duplicate: true` and the card as it is now, but
   without the `Idempotent-Replayed` header; `issuePass` sends the header.
 - `maxStamps` is at least 4 (a validation example the errors area uses).
-- `GET /v1/meta` carries `environment` since 1.2.2; 0.2.4 has no property for
-  it, the suite reads it from `additionalProperties`.
+- `GET /v1/meta` carries `environment` since 1.2.2; 0.2.4 had no property for
+  it and the suite read it from `additionalProperties`; 0.3.0 has `environment`.
 
-## TODO for the 0.3.0 regeneration (API 1.3.0 and later)
+## Added in 0.3.0 (API 1.3.0)
 
-Out of scope while the library is 0.2.4; add to the suite when it is
-regenerated:
+Areas 13 to 15 run after the older areas and before the clean-up:
 
-- `recordSale` and `reverseSale` with receipt `lines` (the universal line-item
-  schema), the with/without comparison, and `billMinor` on `spend`
-  (`422 BILL_REQUIRED`).
-- Earn rules (`docs/EARN-RULES.md` of the core): `listEarnGroups`,
-  `createEarnGroup`, `getEarnGroup`, `updateEarnGroup`, `deleteEarnGroup`
-  (`409 GROUP_IN_USE`), `listSeenLines`, `listEarnSources`, `getEarnRules`,
-  `putEarnRules` (`409 REVISION_CONFLICT`), `createEarnRule`, `updateEarnRule`,
-  `deleteEarnRule`, and the two dry-run operations.
-- Branch QR (`docs/BRANCH-QR.md`): a branch's QR with its curated and seasonal
-  programmes, multi-join, the single-entry flow for code cards, branch freeze
-  (`frozen` on a location, `LOCATION_FROZEN` at the till).
-- `environment` as a typed property of `getMeta`'s answer.
-- English API messages (1.4.0): the error `message` assertions, if any are added,
-  must not depend on the language.
+- **earn rules and receipt lines:** a group (`createEarnGroup`, `getEarnGroup`,
+  `listEarnGroups`, `updateEarnGroup`), templates and sources, rules (`getEarnRules`,
+  `putEarnRules` with `409 REVISION_CONFLICT` on a stale revision, `createEarnRule`,
+  `updateEarnRule`, `deleteEarnRule`, `listEarnRuleRevisions`), `previewEarn` (saved
+  rules and a draft `ruleSet`), `previewSale` (writes nothing), `recordSale` with
+  lines and the `earn` explanation (and its replay), `422 LINES_TOTAL_MISMATCH`, a line
+  refund (`reverseSale` with `lines`, `linesLeft`), `listSeenLines` with
+  `ignoreSeenLine` / `unignoreSeenLine`, `409 GROUP_IN_USE` and the group's deletion.
+- **branch QR and branch freeze:** a branch's `qr` and the public page
+  (`publicBranch`, no credential; `404 BRANCH_NOT_FOUND`), the PNG / SVG / PDF sheet / SVG sheet
+  downloads, `getLocationQrItems`, `previewLocationQr`; `freezeLocation` with a key is
+  refused (`403 CREDENTIAL_NOT_ALLOWED`). **With `REWLOY_STAFF_SESSION` and
+  `REWLOY_STAFF_PASSWORD`** (the person's own password, asked again by the API; read from the
+  environment, never printed) a branch made for the run is frozen: `409 LOCATION_FROZEN` on
+  `recordSale` and `previewSale`, the public page says `frozen` with its note,
+  `updateLocationFreeze`, `listLocationFreezes`; then every branch is frozen for
+  `409 BUSINESS_FROZEN`, and all are opened again with `unfreezeLocation` (in a `finally`).
+  Without them a NOTE says the freeze test was skipped.
+- **gift card copy, code update, webhook events:** `copyProgram` of a loyalty card
+  (`422 NOT_AN_INSTRUMENT`) and of a gift card with another value (and `422 INVALID_CONFIG`
+  for an unknown override), `updateBatch`, the five new webhook events in `webhookEvents`
+  and in `createWebhook`. `holderBranch` is checked only for its refusal of an API key.
+- `PATCH` operations (`updateEarnGroup`, `updateEarnRule`, `updateLocationFreeze`,
+  `updateBatch`) run over the OkHttp transport (`Live.okhttp`).
+- `environment` is a typed property of `getMeta`; the guard and the java consumer read it.
+
+## Still not covered
+
+- `holderBranch` / `joinHolderBranch` (the Rewloy Cüzdan side of the branch QR) need a
+  holder session, which an API key does not have.
 - Webhook delivery to a reachable https address (needs a tunnel; the suite only
   creates, rotates and deletes webhooks) and `Webhook` signature verification
   against a real delivery.
-- PATCH operations (`setWebhookStatus`, `updateProgram` …) with the OkHttp
-  transport (the default transport cannot send PATCH on Java 12 and later).
 - Live feed (`liveFeed`, SSE) against the dev server.
+- Earn rules for points, cashback and VIP programmes, the shops' lines (store
+  platforms), `extendProgramCards`, `putLocationQrItems` / `addQrItems`, and a card issued
+  through a branch QR (`joinProgram` with `locationId`).
+- English API messages (1.4.0): the error `message` assertions, if any are added,
+  must not depend on the language.

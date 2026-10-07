@@ -30,6 +30,13 @@ object Live {
     /** Optional `rws_` staff session: only a person's session may reset the test environment (the API key may not). */
     @JvmField val staffSession: String? = System.getenv("REWLOY_STAFF_SESSION")?.trim()?.takeIf { it.isNotEmpty() }
 
+    /**
+     * Optional, with REWLOY_STAFF_SESSION: that person's password. Freezing a branch asks for it again
+     * (`freezeLocation` is a person's operation with a step-up); without it that test only checks the refusal.
+     * Read from the environment, never printed.
+     */
+    @JvmField val staffPassword: String? = System.getenv("REWLOY_STAFF_PASSWORD")?.takeIf { it.isNotEmpty() }
+
     @JvmStatic val configured: Boolean get() = baseUrl != null && apiKey != null
 
     /** A short id of this run, in every name, e-mail address and idempotency key the suite makes. */
@@ -59,10 +66,9 @@ object Live {
         } catch (e: RuntimeException) {
             throw LiveRefused("REFUSED: $host is not reachable (${e.javaClass.simpleName}: ${e.message}).")
         }
-        val environment = meta.additionalProperties["environment"]?.asString()
-        if (environment == null) {
-            throw LiveRefused("REFUSED: GET /v1/meta on $host has no \"environment\" field; only a server that says \"dev\" is tested.")
-        }
+        // `environment` is a required, typed property since 0.3.0 (API 1.3.0): a server that does not send it
+        // (Rewloy before 1.2.2) fails the typed read above and is refused there.
+        val environment = meta.environment
         if (environment != "dev") {
             throw LiveRefused("REFUSED: GET /v1/meta on $host says environment \"$environment\", not \"dev\". The live suite runs only against a dev server.")
         }
@@ -80,6 +86,15 @@ object Live {
     val rewloy: Rewloy by lazy {
         guard()
         Rewloy { baseUrl(baseUrl!!); apiKey(apiKey!!) }
+    }
+
+    /**
+     * A client over the OkHttp transport: the desktop JDK's default transport cannot send `PATCH` (Java 12 and
+     * later), and many 1.3.0 operations are `PATCH` (`updateEarnGroup`, `updateEarnRule`, `updateLocationFreeze` …).
+     */
+    val okhttp: Rewloy by lazy {
+        guard()
+        Rewloy { baseUrl(baseUrl!!); apiKey(apiKey!!); transport(com.rewloy.okhttp.OkHttpTransport()) }
     }
 
     /** A client with the same server and no credential, for the endpoints that need none and for refusals. */

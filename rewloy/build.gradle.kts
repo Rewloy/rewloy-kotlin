@@ -87,6 +87,8 @@ dependencies {
     // The summary listener is written against the launcher API.
     "liveTestCompileOnly"(platform(libs.junit.bom))
     "liveTestCompileOnly"(libs.junit.launcher)
+    // PATCH needs the OkHttp transport on the desktop JDK (Java 12 and later).
+    "liveTestImplementation"(project(":rewloy-okhttp"))
 }
 tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileLiveTestKotlin") {
     // The shipped code declares its API explicitly (explicitApi above); a test does not have to.

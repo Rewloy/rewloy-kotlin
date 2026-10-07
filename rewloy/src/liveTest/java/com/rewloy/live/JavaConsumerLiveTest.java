@@ -50,7 +50,7 @@ class JavaConsumerLiveTest {
         Rewloy rewloy = client();
         GetMetaData meta = rewloy.getMeta();
         assertEquals("v1", meta.getApiVersion());
-        assertEquals("dev", meta.getAdditionalProperties().get("environment").asString());
+        assertEquals("dev", meta.getEnvironment());
         RewloyResponse<GetBusinessData> business = rewloy.getBusinessWithResponse();
         assertTrue(business.isTestMode());
         assertTrue(business.getData().getName().endsWith("· Test"));
@@ -78,7 +78,9 @@ class JavaConsumerLiveTest {
         assertEquals(0, card.getStamps().getCount());
 
         String saleKey = Live.INSTANCE.key("java-sale");
-        RecordSaleBody sale = new RecordSaleBody(2500, Live.INSTANCE.getLocationId(), "fis-java", null, null);
+        RecordSaleBody sale = new RecordSaleBody(2500);
+        sale.setLocationId(Live.INSTANCE.getLocationId());
+        sale.setReference("fis-java");
         RecordSaleData sold = rewloy.recordSale(serial, sale, RequestOptions.builder().idempotencyKey(saleKey).build());
         assertEquals("stamps", sold.getApplied());
         assertFalse(sold.getDuplicate());

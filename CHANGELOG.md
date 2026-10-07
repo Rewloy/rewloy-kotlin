@@ -5,12 +5,125 @@ https://rewloy.com/gelistiriciler/degisiklikler
 
 This library's releases. The API's own changes are listed at the link above.
 
-## Unreleased
+## 0.3.0 (2026-10-07)
 
+Rewloy API 1.3.0'ı izler (API sürümü, `info.version`): 298 işlem (0.2.4'te 260),
+hiçbiri kaldırılmadı. Beş kütüphane 0.3.0'da aynı sürüme gelir. Eklemeli;
+yalnız aşağıdaki "Breaking" notlarındaki üç nokta eskisinden farklıdır. Ayrıntılar
+aşağıda İngilizce; her yeni işlem, alan ve hata kodu tiplendi ve belgelendi.
+
+Follows Rewloy API 1.3.0 (the product version in `info.version`): 298
+operations (260 in 0.2.4), none removed. All five client libraries are 0.3.0.
+Additive; the only differences from 0.2.4 are the three points under "Breaking"
+at the end.
+
+- **Earn rules and receipt lines** (EARN-RULES). Programmes can earn by rules
+  from the lines of a receipt, not only one stamp / `earnRate` per sale. New
+  operations: product groups `listEarnGroups`, `createEarnGroup`, `getEarnGroup`,
+  `updateEarnGroup`, `deleteEarnGroup` (`409 GROUP_IN_USE`), the categories a till
+  has sent `listSeenLines` (paged), `ignoreSeenLine` / `unignoreSeenLine`,
+  `listEarnSources`; a programme's rules `getEarnRules`, `putEarnRules` (the whole
+  set, with the `revision` you read: `409 REVISION_CONFLICT`), `createEarnRule`,
+  `updateEarnRule`, `deleteEarnRule`, `deleteEarnRules`, `listEarnRuleRevisions`
+  (paged), `listEarnTemplates`, and the dry run **`previewEarn`** (a receipt on a
+  programme, with a draft `ruleSet` and a `context`, no card needed).
+  New errors: `EARN_RULES_NOT_FOUND`, `EARN_RULE_NOT_FOUND`, `RULE_KIND_NOT_FOR_TYPE`,
+  `REVISION_CONFLICT`, `GROUP_IN_USE`.
+- **Receipt lines on sales.** `recordSale` takes `lines` (`lineId`, `name`,
+  `sku`, `category` as a path string or array, `quantity` as number or decimal
+  string, `unit`, `unitPriceMinor`, `discountMinor`, `totalMinor`, `kind`,
+  `tags`) and `receiptDiscountMinor`; its answer carries `earn`, the explanation
+  line by line (`source` `legacy` | `rules`, `revision`, `unit`, `lines[]` with
+  `status` / `groups` / `rules` / `earned`, `rules[]`, and `total` with the
+  steps: `beforeRounding`, `rounded`, `receiptCap`, `promotion`, `caps[]`,
+  `credited`). `reason` gained `daily_cap_reached`, `monthly_cap_reached`,
+  `no_earning_lines`, `no_lines`. New errors `TOO_MANY_LINES`,
+  `LINE_AMOUNT_INVALID`, `LINES_TOTAL_MISMATCH`. A sale without `lines` earns as
+  before. `category` and `quantity` are `JsonValue` (a string or an array / a
+  number or a string: the API takes both).
+- **`previewSale`** (`POST /v1/passes/{serial}/sale/preview`): the exact answer
+  `recordSale` would give, `preview: true`, nothing written.
+- **Line refunds.** `reverseSale` takes `lines` (`lineId`, and `quantity` or
+  `amountMinor`; needs an `Idempotency-Key`): the sale is judged again without
+  those lines, by the rules of the day it was made, and only the difference is
+  taken back. The answer has `earn` and `linesLeft`. New errors `LINE_NOT_FOUND`,
+  `LINE_ALREADY_REFUNDED`.
+- **`billMinor` on `spend`** (`passAction`): the bill the spend pays part of;
+  `422 BILL_REQUIRED` when the programme limits the share cashback may pay, and
+  `SPEND_SHARE_EXCEEDED` when the spend is above it.
+- **Branch QR** (BRANCH-QR). A branch has one QR; a location carries
+  `qr: { code, url, state }` (`live` | `frozen` | …), `frozen`, and
+  `stats.qrCards30`. New operations: the public page `publicBranch(code)` (no
+  credential), the holder's `holderBranch` and `joinHolderBranch` (a holder
+  session; an API key gets `403 CREDENTIAL_NOT_ALLOWED`), the downloads
+  `locationQrPng` (`size`), `locationQrSvg`, `locationQrSheetPdf`,
+  `locationQrSheetSvg` (`form`), all `RewloyFile`, the list behind the QR
+  `getLocationQrItems`, `putLocationQrItems`, `addQrItems` and
+  `previewLocationQr`. `createLocation` takes `programIds` and `qrListFrom`;
+  `joinProgram` and `joinHolderProgram` take `locationId` / `branchCode`;
+  `programJoinQr` takes `branchCode` and `format`. New errors `BRANCH_NOT_FOUND`,
+  `BRANCH_GONE`, `QR_LIST_CHANGED`, `QR_ITEM_INVALID`, `ITEM_NOT_OFFERED`,
+  `NOT_VALID_HERE`.
+- **Branch freeze.** `freezeLocation` (a person's session and password; an API key
+  gets `403 CREDENTIAL_NOT_ALLOWED`), `updateLocationFreeze` (`PATCH`),
+  `cancelLocationFreeze`, `unfreezeLocation`, `listLocationFreezes` (with the
+  free days left). A frozen branch's till answers `409 LOCATION_FROZEN`; when
+  every branch is frozen the business is paused and the answer is
+  `409 BUSINESS_FROZEN` (also on `issuePass`, `passAction`, `previewSale`,
+  `joinProgram`, `claimCode`, `sendCampaign`; `LOCATION_FROZEN` on `issuePass`,
+  `passAction`, `previewSale` too). Also `ALREADY_FROZEN`, `NOT_FROZEN`,
+  `FREEZE_STARTED`, `FREEZE_LIMIT`, `LOCATION_ARCHIVED`. `getPassTill` has
+  `frozen`, `getPlan` has `billing.days`, and `previewEarn` answers
+  `credited: 0` with `reason: "location_frozen"` / `"business_paused"`.
+- **Gift cards, coupons and codes.** `copyProgram` (a gift card, coupon or
+  discount card copied with other terms; a loyalty card is
+  `422 NOT_AN_INSTRUMENT`), `extendProgramCards`, `updateBatch` (`PATCH`). Codes
+  have `channels`, `qrLocationIds`, `claimFrom` / `claimUntil`, `proofRequired`
+  and `terms`; `createBatch` takes them (`BATCH_CAP_REQUIRED`,
+  `BATCH_PER_PERSON_REQUIRED`, `CAPACITY_BELOW_CLAIMED`, `CLAIM_AFTER_CARD_END`,
+  `BATCH_NOT_OPEN` on `claimCode`, `PROOF_REQUIRED`; `CLAUSE_NOT_PUBLISHED` is in the
+  `ErrorCode` list too); a code's `state`
+  can be `scheduled`. `createProgram` takes the instrument terms (`validity`,
+  `usage`, `usageLimit`, `giftValueMinor`, `offerValueMinor`, `terms`,
+  `joinWindow`); `listAllBatches` rows have `qrCount`.
+- **Webhook events** `pass.extended`, `location.frozen`, `location.unfrozen`,
+  `business.paused`, `business.resumed` (in `webhookEvents` and accepted by
+  `createWebhook`). `Webhook.verify` reads any type; `type` is the event name.
+- **Stores.** `platform: "rewloy"` and `lines` (last receipt-line delivery,
+  problem) on shops; `lastDelivery.result` can be `refund_lines`.
+- **`environment`** (`live` | `dev`) is a typed property of `getMeta`.
+  `holderCard` has `notices`, `holderMerchantPrograms` rows `validAt`.
 - **Live tests** (`./gradlew liveTest`, README "Canlı testler" / "Live tests"):
   the library against a development server, end to end; refuses a server that is
   not `"environment": "dev"` and any key that is not `rwk_test_`. A source set
-  and a task of their own: `test` and `check` are unchanged. docs/LIVE-TESTS.md.
+  and a task of their own: `test` and `check` are unchanged. New in 0.3.0: earn
+  groups and rules, `previewEarn` / `previewSale`, `recordSale` with lines and
+  the earn explanation, a line refund, the branch QR (public page, image and
+  sheet downloads), copy of a gift card, and, with `REWLOY_STAFF_SESSION` and
+  `REWLOY_STAFF_PASSWORD`, branch freeze (`LOCATION_FROZEN`, `BUSINESS_FROZEN`).
+  `PATCH` operations run over the OkHttp transport. docs/LIVE-TESTS.md.
+- Kotlin: the typed answers require the fields 1.3.0 always sends, so
+  **0.3.0 reads Rewloy API 1.3.0 and later**; against 1.2.x a call whose answer
+  lacks them (for example `getMeta`'s `environment`, a location's `qr` and
+  `frozen`, a code's `channels`) throws `RewloyException` `INVALID_RESPONSE`.
+  Stay on 0.2.4 for a 1.2.x server.
+
+**Breaking** (Kotlin and Java source; the wire is additive):
+
+- Adding optional fields changes the **all-arguments constructor** of these body
+  classes: `RecordSaleBody`, `ReverseSaleBody`, `PassActionBody`,
+  `CreateLocationBody`, `CreateBatchBody`, `JoinProgramBody`,
+  `JoinHolderProgramBody`, `ClaimHolderCodeBody`, `CreateProgramBody`,
+  `UpdateProgramBody` and `PreviewProgramBodyConfig` (the last three also get the
+  new fields in the middle of the list, in the spec's order). Code that called
+  one positionally with every argument (typical in Java) must use the
+  required-fields-only constructor and the setters; Kotlin code with named
+  arguments compiles unchanged. The library's own Java live test was changed
+  this way.
+- The answers listed above now have more required properties; code that
+  constructs answer objects (tests of your own) must supply them.
+- A server that does not send them (before 1.3.0) is refused, as described
+  above.
 
 ## 0.2.4 (2026-10-06)
 

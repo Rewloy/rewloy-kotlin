@@ -29,7 +29,7 @@ class GuardLiveTest {
     @Order(2)
     fun `the server says it is a dev Rewloy`() {
         val meta = Live.anonymous().getMeta()
-        assertEquals("dev", meta.additionalProperties["environment"]?.asString())
+        assertEquals("dev", meta.environment)
     }
 
     @Test

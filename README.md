@@ -58,10 +58,10 @@ repositories {
 }
 
 dependencies {
-    implementation("com.rewloy:rewloy:0.2.4")
+    implementation("com.rewloy:rewloy:0.3.0")
     // isteğe bağlı:
-    implementation("com.rewloy:rewloy-okhttp:0.2.4")      // OkHttp taşıyıcısı
-    implementation("com.rewloy:rewloy-coroutines:0.2.4")  // suspend ve Flow
+    implementation("com.rewloy:rewloy-okhttp:0.3.0")      // OkHttp taşıyıcısı
+    implementation("com.rewloy:rewloy-coroutines:0.3.0")  // suspend ve Flow
 }
 ```
 
@@ -77,7 +77,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.rewloy:rewloy:0.2.4'
+    implementation 'com.rewloy:rewloy:0.3.0'
 }
 ```
 
@@ -96,7 +96,7 @@ dependencies {
   <dependency>
     <groupId>com.rewloy</groupId>
     <artifactId>rewloy</artifactId>
-    <version>0.2.4</version>
+    <version>0.3.0</version>
   </dependency>
 </dependencies>
 ```
@@ -350,9 +350,12 @@ sonradan geri alındığını söyler (yalnız bir tekrarda olabilir; `credited`
 isteğin yazdığıdır, kart onu artık taşımaz): fişi yeniden yazmak için yeni bir
 anahtar gönderin. `passAction`ın mühürlü sınıfında `reversed` doğrudan okunur;
 `card` her şeklin kendisindedir (`PassActionDataOption1.card`,
-`PassActionDataOption2.card`). **0.2.4 Rewloy API 1.2.0'ı ve sonrasını okur:**
+`PassActionDataOption2.card`). **0.2.4'ten beri kütüphane Rewloy API 1.2.0'ı ve sonrasını okur:**
 `card` ve `reversed` zorunlu alanlardır, 1.1.x'e karşı bu çağrılar
-`INVALID_RESPONSE` atar.
+`INVALID_RESPONSE` atar. **0.3.0 Rewloy API 1.3.0'ı ve sonrasını okur:** 1.3.0'ın
+her zaman gönderdiği alanlar zorunludur (`getMeta`'nın `environment`'ı, şubenin
+`qr` ve `frozen`'ı, kodun `channels`'ı …); 1.2.x'e karşı bu çağrılar aynı
+hatayı atar, 1.2.x sunucu için 0.2.4'te kalın.
 
 **Kartın işlemleri: `listPassOperations`.** Kartın defterindeki işlemler,
 yeniden eskiye, sayfalı (`listPassOperationsAll(seri)`): bir kasa ekranındaki
@@ -374,6 +377,76 @@ for (islem in rewloy.listPassOperationsAll(seri)) {
 kaydın `reason`'ı nedeni söyler: `in_future`, `too_old` (72 saatten eski),
 `before_issue` (kart o anda yoktu: `occurredAt` olmadan yeniden gönderin),
 `invalid`. Tanımadığınız bir `reason`'ı `invalid` gibi ele alın.
+
+### Kazanım kuralları ve fiş satırları (API 1.3.0)
+
+Bir program, satışın tek damgası ya da `earnRate`'i yerine fişin **satırlarından**
+kurallarla kazandırabilir. `recordSale` (ve `previewSale`) `lines` alır; satır
+göndermeyen satış eskisi gibi kazanır. Yanıttaki `earn`, hangi satırın ne
+kazandığını ve nedenini adım adım söyler.
+
+```kotlin
+// 1. İşletmenin gruplarını kurun (satırların kategorileri; görülenler: listSeenLines)
+val grup = rewloy.createEarnGroup(CreateEarnGroupBody("Hazırlanan içecekler").apply {
+    members = listOf(CreateEarnGroupBodyMembersItem("include", "category", "İçecek > Sıcak"))
+})
+// 2. Kuralları koyun: okuduğunuz revision ile (başkası araya girdiyse 409 REVISION_CONFLICT)
+val simdiki = rewloy.getEarnRules(programId)
+rewloy.putEarnRules(programId, PutEarnRulesBody(simdiki.revision.toInt(), listOf(
+    PutEarnRulesBodyRulesItem("stamp.perUnit").apply { id = "r1"; groupId = OptionalField.of(grup.id); stamps = 1 },
+)))
+// 3. Fişi satırlarıyla yazın
+val fis = RecordSaleBody(amountMinor = 35800, locationId = subeId).apply {
+    lines = listOf(RecordSaleBodyLinesItem("Latte", 9500).apply {
+        lineId = "1"; category = JsonValue.of("İçecek > Sıcak"); quantity = JsonValue.of(2L)
+    })
+}
+val satis = rewloy.recordSale(seri, fis, RequestOptions(idempotencyKey = "kasa3-z0187-fis0042"))
+satis.earn?.lines?.forEach { println("${it.lineId}: ${it.status} ${it.earned}") }   // earned, no_rule, zero_price …
+```
+
+- **Grup ve kurallar:** `listEarnGroups`, `createEarnGroup`, `getEarnGroup`,
+  `updateEarnGroup`, `deleteEarnGroup` (kural kullanıyorsa `409 GROUP_IN_USE`);
+  `getEarnRules`, `putEarnRules`, `createEarnRule`, `updateEarnRule`,
+  `deleteEarnRule`, `deleteEarnRules`, `listEarnRuleRevisions`,
+  `listEarnTemplates`; görülen kategoriler `listSeenLines`, `ignoreSeenLine`,
+  `listEarnSources`. `updateEarnGroup`, `updateEarnRule` `PATCH`'tir (aşağıya bakın).
+- **Önizleme, yazmadan:** `previewEarn(programId, …)` kart gerektirmez ve taslak
+  `ruleSet` alır; `previewSale(seri, …)` `recordSale`'in vereceği yanıtın aynısını
+  verir, hiçbir şey yazmaz.
+- **Satır iadesi:** `reverseSale(seri, ReverseSaleBody(saleKey = …).apply { lines = listOf(ReverseSaleBodyLinesItem("1")) }, RequestOptions(idempotencyKey = …))`
+  fişi kalan satırlarla, satıldığı günün kurallarıyla yeniden yargılar ve yalnız
+  farkı geri alır; yanıtta `earn` ve `linesLeft` vardır (`LINE_NOT_FOUND`,
+  `LINE_ALREADY_REFUNDED`).
+- Hatalar: `TOO_MANY_LINES`, `LINE_AMOUNT_INVALID`, `LINES_TOTAL_MISMATCH` (satırların
+  toplamı `amountMinor`'dan küçük), `RULE_KIND_NOT_FOR_TYPE`. `spend`'e
+  `billMinor` eklenir; pay sınırı olan programda `BILL_REQUIRED` ve
+  `SPEND_SHARE_EXCEEDED`. `category` bir yol metni (`"İçecek > Sıcak"`) ya da dizi,
+  `quantity` sayı ya da ondalık metin (`"0.350"`) olduğundan ikisi de `JsonValue`'dur.
+
+### Şube QR'ı, dondurma, hediye kartı kopyası (API 1.3.0)
+
+- **Şube QR'ı.** Şubenin tek bir QR'ı vardır: `getLocation(id).qr` (`code`, `url`,
+  `state`). Müşterinin tarayınca gördüğü sayfa kimlik istemeden okunur
+  (`rewloy.publicBranch(kod)`); basılacak görsel ve sayfalar dosyadır:
+  `locationQrPng(id, LocationQrPngQuery().apply { size = 800 })`, `locationQrSvg`,
+  `locationQrSheetPdf`, `locationQrSheetSvg` (`RewloyFile`: `content`,
+  `contentType`). QR'ın listesi `getLocationQrItems`, `putLocationQrItems`,
+  `addQrItems`, `previewLocationQr`. Kart sahibi tarafı (`holderBranch`,
+  `joinHolderBranch`) kart sahibi oturumu ister; API anahtarı
+  `403 CREDENTIAL_NOT_ALLOWED` alır.
+- **Şube dondurma.** `freezeLocation` bir kişinin oturumu ve şifresiyle yapılır
+  (anahtar `403 CREDENTIAL_NOT_ALLOWED`); açmak, notu ve günü değiştirmek
+  anahtarla da olur: `unfreezeLocation`, `updateLocationFreeze` (`PATCH`),
+  `cancelLocationFreeze`, `listLocationFreezes`. Donuk şubenin kasası
+  `409 LOCATION_FROZEN` der; bütün şubeler donukken işletme duraklar ve yanıt
+  `409 BUSINESS_FROZEN` olur. Webhook olayları: `location.frozen`,
+  `location.unfrozen`, `business.paused`, `business.resumed`; kartlar uzayınca
+  `pass.extended`.
+- **Hediye kartı, kupon, indirim kartı.** `copyProgram(id, CopyProgramBody().apply { name = …; overrides = JsonValue.parse("""{"giftValueMinor":10000}""") })`
+  başka bir değerle kopyasını yapar; sadakat kartı (damga, puan, nakit iade,
+  üyelik) `422 NOT_AN_INSTRUMENT`. Ayrıca `extendProgramCards`, `updateBatch`
+  (`PATCH`); kodlarda `channels`, `claimFrom` / `claimUntil`, `proofRequired`.
 
 ### `Idempotency-Key`
 
@@ -533,7 +606,8 @@ try {
 
 Başlıklar:
 - `Rewloy-Event`: olay türü (`pass.issued`, `pass.activity`, `pass.voided`,
-  `webhook.test`); gövdedeki `type` ile aynı.
+  `pass.extended`, `location.frozen`, `location.unfrozen`, `business.paused`,
+  `business.resumed`, `webhook.test`); gövdedeki `type` ile aynı.
 - `Rewloy-Delivery`: teslimin kimliği. Teslim "en az bir kez"dir: çift gelen
   teslimi bununla ayıklayın.
 
@@ -693,7 +767,7 @@ sürümünde vardır, ek bağımlılık gerektirmez. Yönlendirmeleri izlemez.
 
 - **`PATCH`.** Android'in `HttpURLConnection`'ı `PATCH` gönderir. Masaüstü JDK'sı
   göndermez: Java 11'e kadar kütüphane bunu aşar; Java 12 ve üstünde `PATCH`
-  (API'nin 260 işleminden 12'si) `UnsupportedOperationException` atar ve
+  (API'nin 298 işleminden 16'sı) `UnsupportedOperationException` atar ve
   `rewloy-okhttp`'a yönlendirir. Sunucu tarafında Java 12+ kullanıyorsanız
   OkHttp taşıyıcısını kullanın.
 - **OkHttp.** Uygulamanızda zaten bir `OkHttpClient` (kendi havuzu, vekil ve
@@ -745,7 +819,9 @@ REWLOY_BASE_URL=https://<dev sunucusu> REWLOY_API_KEY=rwk_test_… ./gradlew liv
 
 - `REWLOY_BASE_URL` ve `REWLOY_API_KEY` yoksa görev **atlanır** (hata değildir).
   İsteğe bağlı `REWLOY_STAFF_SESSION` (`rws_…`, bir kişinin oturumu) yalnız son
-  adım içindir: test sıfırlamasını yapar. Anahtar bunu yapamaz
+  adım içindir: test sıfırlamasını yapar; `REWLOY_STAFF_PASSWORD` ile birlikte
+  şube dondurma testini de çalıştırır (`LOCATION_FROZEN`, `BUSINESS_FROZEN`).
+  Anahtar bunu yapamaz
   (`403 CREDENTIAL_NOT_ALLOWED`); oturum yoksa bu adım o reddi doğrular ve
   özette "NOTE" olarak yazar, müşteriler ve kartlar test ortamında kalır.
 - **Hiçbir şey göndermeden önce** `GET /v1/meta` `"environment": "dev"`
@@ -760,11 +836,16 @@ REWLOY_BASE_URL=https://<dev sunucusu> REWLOY_API_KEY=rwk_test_… ./gradlew liv
   program), webhook (oluştur, listele, sırrı yenile, sil), `Idempotency-Key`
   tekrarı, `RateLimit-*` başlıkları, hata nesnesi (`code`, `status`,
   `requestId`), sayfalama, Java'dan çağrı ve sonda temizlik ile
-  `resetTestEnvironment`. Oluşturduğu programları arşivler.
+  `resetTestEnvironment`. 0.3.0'dan beri ayrıca: ürün grupları ve kazanım
+  kuralları (`REVISION_CONFLICT`, `GROUP_IN_USE`), `previewEarn`, `previewSale`,
+  satırlı `recordSale` ve `earn` açıklaması, satır iadesi, şube QR'ı (genel
+  sayfa, görsel ve sayfa indirmeleri), hediye kartı kopyası
+  (`NOT_AN_INSTRUMENT`), yeni webhook olayları ve şube dondurma. `PATCH`
+  işlemleri OkHttp taşıyıcısıyla koşar. Oluşturduğu programları arşivler.
 - Çıktı, alan başına (geçti / kaldı / atlandı) kısa bir özettir; herhangi bir
-  hatada çıkış kodu sıfırdan farklıdır. Henüz kapsamadıkları (0.3.0'da
-  yeniden üretimle gelecek işlemler) [docs/LIVE-TESTS.md](docs/LIVE-TESTS.md)'de
-  listelidir.
+  hatada çıkış kodu sıfırdan farklıdır. Kapsamadıkları (kart sahibi oturumu
+  isteyen `holderBranch` / `joinHolderBranch`, webhook teslimi, canlı akış)
+  [docs/LIVE-TESTS.md](docs/LIVE-TESTS.md)'de listelidir.
 
 ### Yayımlamak
 
@@ -776,7 +857,7 @@ dosyaları gönderir. Kurulumu ve kuralları dosyanın başında yazılıdır.
 1. Sürümü üç yerde yükseltin: `build.gradle.kts`, `RewloyVersion.CURRENT` ve
    CHANGELOG.md (bir test üçünün aynı olduğunu denetler).
 2. main'e gönderin ve CI'ın yeşil olmasını bekleyin.
-3. Etiketleyin: `git tag v0.2.4 && git push origin v0.2.4`.
+3. Etiketleyin: `git tag v0.3.0 && git push origin v0.3.0`.
 
 Yayımlanmış bir sürüm değiştirilemez; bir düzeltme yeni bir sürümdür. Etiket
 yalnız `vX.Y.Z` biçiminde olabilir (şimdilik ön sürüm yok) ve sürüm, yayımlanmış
@@ -869,9 +950,9 @@ repositories {
 }
 
 dependencies {
-    implementation("com.rewloy:rewloy:0.2.4")
-    implementation("com.rewloy:rewloy-okhttp:0.2.4")      // optional: an OkHttp transport
-    implementation("com.rewloy:rewloy-coroutines:0.2.4")  // optional: suspend and Flow
+    implementation("com.rewloy:rewloy:0.3.0")
+    implementation("com.rewloy:rewloy-okhttp:0.3.0")      // optional: an OkHttp transport
+    implementation("com.rewloy:rewloy-coroutines:0.3.0")  // optional: suspend and Flow
 }
 ```
 
@@ -887,7 +968,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.rewloy:rewloy:0.2.4'
+    implementation 'com.rewloy:rewloy:0.3.0'
 }
 ```
 
@@ -906,7 +987,7 @@ Maven, `pom.xml`:
   <dependency>
     <groupId>com.rewloy</groupId>
     <artifactId>rewloy</artifactId>
-    <version>0.2.4</version>
+    <version>0.3.0</version>
   </dependency>
 </dependencies>
 ```
@@ -980,8 +1061,12 @@ RecordSaleData sale = rewloy.recordSale(serial, body, RequestOptions.builder().i
   `passes.read` in the card's programme gets `card == null`. `reversed == true`
   on `recordSale` / `passAction` (replays only) says the sale written under that
   key was taken back since: send a new key to write the receipt again.
-  `card` and `reversed` are required fields in 0.2.4: it reads Rewloy API 1.2.0
-  and later, and against 1.1.x those calls throw `INVALID_RESPONSE`. For "can I
+  `card` and `reversed` are required fields since 0.2.4: the library reads Rewloy API 1.2.0
+  and later, and against 1.1.x those calls throw `INVALID_RESPONSE`. **0.3.0
+  reads Rewloy API 1.3.0 and later** the same way: the fields 1.3.0 always sends
+  are required (`getMeta`'s `environment`, a location's `qr` and `frozen`, a
+  code's `channels` …), and against 1.2.x those calls throw `INVALID_RESPONSE`;
+  stay on 0.2.4 for a 1.2.x server. For "can I
   act now" read `card.actions[].ready`; `rewardReady` means "reward ready" only
   for stamp and points cards (always `true` on VIP, any balance on cashback and
   gift cards).
@@ -1046,7 +1131,10 @@ val event = Webhook.verify(rawBody, request.header("Rewloy-Signature"), secret)
   300 seconds.
 - **Refusal.** On failure it throws `WebhookSignatureException` (`reason`):
   answer 400.
-- **Headers.** `Rewloy-Event` is the event type. `Rewloy-Delivery` is the
+- **Headers.** `Rewloy-Event` is the event type (`pass.issued`, `pass.activity`,
+  `pass.voided`, and since 1.3.0 `pass.extended`, `location.frozen`,
+  `location.unfrozen`, `business.paused`, `business.resumed`; `webhook.test` for
+  a test delivery). `Rewloy-Delivery` is the
   same on every retry of a delivery: deduplicate on it. Delivery is at least
   once.
 
@@ -1085,6 +1173,79 @@ archived programme.
 archived) refuse it and no mail goes; before 1.2.0 the last three were sent
 anyway. The codes are in the `ErrorCode` constants (`ErrorCode.BATCH_FULL`…).
 
+### Earn rules, receipt lines, branch QR and freeze (API 1.3.0, library 0.3.0)
+
+**Earn rules and receipt lines.** A programme can earn by rules from the
+**lines** of a receipt instead of one stamp or `earnRate` per sale. `recordSale`
+(and `previewSale`) take `lines`; a sale without lines earns as before. The
+answer's `earn` says which line earned what and why, step by step.
+
+```kotlin
+// 1. Groups of the business (categories the till sends; the seen ones: listSeenLines)
+val group = rewloy.createEarnGroup(CreateEarnGroupBody("Prepared drinks").apply {
+    members = listOf(CreateEarnGroupBodyMembersItem("include", "category", "Drinks > Hot"))
+})
+// 2. The rules, put with the revision you read (409 REVISION_CONFLICT if someone changed them meanwhile)
+val current = rewloy.getEarnRules(programId)
+rewloy.putEarnRules(programId, PutEarnRulesBody(current.revision.toInt(), listOf(
+    PutEarnRulesBodyRulesItem("stamp.perUnit").apply { id = "r1"; groupId = OptionalField.of(group.id); stamps = 1 },
+)))
+// 3. The receipt with its lines
+val receipt = RecordSaleBody(amountMinor = 35800, locationId = locationId).apply {
+    lines = listOf(RecordSaleBodyLinesItem("Latte", 9500).apply {
+        lineId = "1"; category = JsonValue.of("Drinks > Hot"); quantity = JsonValue.of(2L)
+    })
+}
+val sale = rewloy.recordSale(card.serial, receipt, RequestOptions(idempotencyKey = "till3-z0187-r$receiptNo"))
+sale.earn?.lines?.forEach { println("${it.lineId}: ${it.status} ${it.earned}") }   // earned, no_rule, zero_price …
+```
+
+- **Groups and rules:** `listEarnGroups`, `createEarnGroup`, `getEarnGroup`,
+  `updateEarnGroup`, `deleteEarnGroup` (`409 GROUP_IN_USE` while a rule uses it);
+  `getEarnRules`, `putEarnRules`, `createEarnRule`, `updateEarnRule`,
+  `deleteEarnRule`, `deleteEarnRules`, `listEarnRuleRevisions`,
+  `listEarnTemplates`; the categories seen: `listSeenLines`, `ignoreSeenLine`,
+  `listEarnSources`. `updateEarnGroup` and `updateEarnRule` are `PATCH` (see
+  below).
+- **Dry runs that write nothing:** `previewEarn(programId, …)` needs no card and
+  takes a draft `ruleSet`; `previewSale(serial, …)` answers exactly as
+  `recordSale` would.
+- **Refunding lines:** `reverseSale(serial, ReverseSaleBody(saleKey = …).apply { lines = listOf(ReverseSaleBodyLinesItem("1")) }, RequestOptions(idempotencyKey = …))`
+  judges the receipt again without them, by the rules of the day it was made,
+  and takes back only the difference; the answer has `earn` and `linesLeft`
+  (`LINE_NOT_FOUND`, `LINE_ALREADY_REFUNDED`).
+- **Errors:** `TOO_MANY_LINES`, `LINE_AMOUNT_INVALID`, `LINES_TOTAL_MISMATCH` (the
+  lines add up to less than `amountMinor`), `RULE_KIND_NOT_FOR_TYPE`. `spend`
+  takes `billMinor`; a programme that limits the share cashback may pay answers
+  `BILL_REQUIRED` and `SPEND_SHARE_EXCEEDED`. `category` is a path string or an
+  array and `quantity` a number or a decimal string (`"0.350"`), so both are
+  `JsonValue`.
+
+**Branch QR.** A branch has one QR: `getLocation(id).qr` (`code`, `url`,
+`state`). The page a customer sees after scanning is read with no credential
+(`rewloy.publicBranch(code)`); the image and the sheets are files:
+`locationQrPng(id, LocationQrPngQuery().apply { size = 800 })`, `locationQrSvg`,
+`locationQrSheetPdf`, `locationQrSheetSvg` (`RewloyFile`: `content`,
+`contentType`). The list behind the QR: `getLocationQrItems`,
+`putLocationQrItems`, `addQrItems`, `previewLocationQr`. The holder's side
+(`holderBranch`, `joinHolderBranch`) needs a holder session; an API key gets
+`403 CREDENTIAL_NOT_ALLOWED`.
+
+**Branch freeze.** `freezeLocation` is a person's operation (their session and
+password again; a key gets `403 CREDENTIAL_NOT_ALLOWED`); opening a branch and
+changing the note or the day can be done with a key: `unfreezeLocation`,
+`updateLocationFreeze` (`PATCH`), `cancelLocationFreeze`, `listLocationFreezes`.
+A frozen branch's till answers `409 LOCATION_FROZEN`; when every branch is
+frozen the business is paused and the answer is `409 BUSINESS_FROZEN`. Webhook
+events: `location.frozen`, `location.unfrozen`, `business.paused`,
+`business.resumed`, and `pass.extended` when cards are extended.
+
+**Gift cards, coupons, discount cards.** `copyProgram(id, CopyProgramBody().apply { name = …; overrides = JsonValue.parse("""{"giftValueMinor":10000}""") })`
+copies one with another value; a loyalty card (stamps, points, cashback,
+membership) is `422 NOT_AN_INSTRUMENT`. Also `extendProgramCards` and
+`updateBatch` (`PATCH`); codes carry `channels`, `claimFrom` / `claimUntil` and
+`proofRequired`.
+
 ### Errors, retries, deprecations
 
 - **Errors.** Failures throw `RewloyException` (unchecked) with `status`,
@@ -1103,8 +1264,8 @@ anyway. The codes are in the `ErrorCode` constants (`ErrorCode.BATCH_FULL`…).
 
 ### `PATCH` and the JDK
 
-Android's `HttpURLConnection` sends `PATCH`; the desktop JDK's does not (12 of
-the 260 operations are `PATCH`). Up to Java 11 the library works around it; from
+Android's `HttpURLConnection` sends `PATCH`; the desktop JDK's does not (16 of
+the 298 operations are `PATCH`). Up to Java 11 the library works around it; from
 Java 12 on, use the OkHttp transport (`com.rewloy:rewloy-okhttp`).
 
 ### Live tests
@@ -1121,7 +1282,8 @@ REWLOY_BASE_URL=https://<dev server> REWLOY_API_KEY=rwk_test_… ./gradlew liveT
 - Without `REWLOY_BASE_URL` and `REWLOY_API_KEY` the task **skips** (not a
   failure). The optional `REWLOY_STAFF_SESSION` (`rws_…`, a person's session) is
   for the last step only: the test reset, which an API key may not do
-  (`403 CREDENTIAL_NOT_ALLOWED`). Without it that step checks the refusal and
+  (`403 CREDENTIAL_NOT_ALLOWED`); with `REWLOY_STAFF_PASSWORD` too it also runs
+  the branch freeze test (`LOCATION_FROZEN`, `BUSINESS_FROZEN`). Without it that step checks the refusal and
   says so as a "NOTE" in the summary; the run's customers and cards stay in the
   test business.
 - **Before anything is sent that changes data**, `GET /v1/meta` must say
@@ -1136,10 +1298,16 @@ REWLOY_BASE_URL=https://<dev server> REWLOY_API_KEY=rwk_test_… ./gradlew liveT
   `BATCH_EXPIRED`, an archived program); webhooks (create, list, rotate the
   secret, delete); `Idempotency-Key` replay; the `RateLimit-*` headers; the error
   object (`code`, `status`, `requestId`); pagination; a Java consumer; and, at
-  the end, clean-up (programs are archived) and `resetTestEnvironment`.
+  the end, clean-up (programs are archived) and `resetTestEnvironment`. Since
+  0.3.0 also: product groups and earn rules (`REVISION_CONFLICT`,
+  `GROUP_IN_USE`), `previewEarn`, `previewSale`, `recordSale` with lines and the
+  `earn` explanation, a line refund, the branch QR (public page, image and sheet
+  downloads), the copy of a gift card (`NOT_AN_INSTRUMENT`), the new webhook
+  events and branch freeze. `PATCH` operations run over the OkHttp transport.
 - The output is a short summary per area (passed / failed / skipped); any
-  failure exits non-zero. What it does not cover yet (operations a later
-  generation adds) is listed in [docs/LIVE-TESTS.md](docs/LIVE-TESTS.md).
+  failure exits non-zero. What it does not cover (`holderBranch` /
+  `joinHolderBranch`, which need a holder session, webhook delivery, the live
+  feed) is listed in [docs/LIVE-TESTS.md](docs/LIVE-TESTS.md).
 
 ### Security and licence
 

@@ -360,3 +360,21 @@ whole answer (14).
       for `com.rewloy` (Gradle): the group is taken from this repository only, so a
       package of the same name in another repository cannot stand in for it, and this
       repository is asked for nothing else. The repository is HTTPS only.
+33. **0.3.0 (Rewloy API 1.3.0), what the regeneration decided.**
+    - **`category` and `quantity` of a receipt line stay `JsonValue`.** The document gives each two
+      types (a path string or an array of strings; a number or a decimal string). They are not objects,
+      so the union rule of 6 does not apply, and a single `String` would have thrown the other form away.
+      Build them with `JsonValue.of(...)` / `JsonValue.parse(...)`.
+    - **Three line classes, one per operation** (`RecordSaleBodyLinesItem`, `PreviewSaleBodyLinesItem`,
+      `PreviewEarnBodyLinesItem`): the generator names a nested schema after the operation that uses it
+      (decision 6); the three are the same shape and the same fields.
+    - **Optional fields change a body's positional constructor** (the CHANGELOG lists the classes). The
+      alternative, hiding the primary constructor behind overloads, would have changed every body of the
+      library, so 0.3.0 keeps the generator's rule and says so under "Breaking".
+    - **Required answer fields make 0.3.0 read API 1.3.0 and later** (as 0.2.4 did for 1.2.0): the
+      strict reader is the library's promise that a field exists, and softening it for older servers
+      would make `getMeta().environment` nullable for everyone.
+    - **The live suite takes the OkHttp transport as a test-only dependency** for `PATCH` (the desktop JDK's
+      `HttpURLConnection` cannot send it on Java 12+), and one more optional input,
+      `REWLOY_STAFF_PASSWORD`, for `freezeLocation`, which asks a person's password again. It is read
+      from the environment, never printed or stored.

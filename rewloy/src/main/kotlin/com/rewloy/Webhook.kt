@@ -42,8 +42,9 @@ public class WebhookEvent internal constructor(
     public val id: String? get() = root["id"]?.asString()
 
     /**
-     * The event type: `pass.issued`, `pass.activity`, `pass.voided` or `webhook.test` (the panel's or
-     * `testWebhook`'s test delivery). The same as the `Rewloy-Event` header.
+     * The event type: `pass.issued`, `pass.activity`, `pass.voided`, `pass.extended`, `location.frozen`,
+     * `location.unfrozen`, `business.paused`, `business.resumed` (the last five since API 1.3.0; `webhookEvents` lists
+     * them) or `webhook.test` (the panel's or `testWebhook`'s test delivery). The same as the `Rewloy-Event` header.
      */
     public val type: String get() = root["type"]?.asString() ?: ""
 
