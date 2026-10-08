@@ -360,7 +360,7 @@ whole answer (14).
       for `com.rewloy` (Gradle): the group is taken from this repository only, so a
       package of the same name in another repository cannot stand in for it, and this
       repository is asked for nothing else. The repository is HTTPS only.
-33. **0.3.0 (Rewloy API 1.3.0), what the regeneration decided.**
+33. **0.3.0 (Rewloy API 1.3.2, first generated from 1.3.0), what the regeneration decided.**
     - **`category` and `quantity` of a receipt line stay `JsonValue`.** The document gives each two
       types (a path string or an array of strings; a number or a decimal string). They are not objects,
       so the union rule of 6 does not apply, and a single `String` would have thrown the other form away.

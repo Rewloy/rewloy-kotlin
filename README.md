@@ -352,7 +352,7 @@ anahtar gönderin. `passAction`ın mühürlü sınıfında `reversed` doğrudan 
 `card` her şeklin kendisindedir (`PassActionDataOption1.card`,
 `PassActionDataOption2.card`). **0.2.4'ten beri kütüphane Rewloy API 1.2.0'ı ve sonrasını okur:**
 `card` ve `reversed` zorunlu alanlardır, 1.1.x'e karşı bu çağrılar
-`INVALID_RESPONSE` atar. **0.3.0 Rewloy API 1.3.0'ı ve sonrasını okur:** 1.3.0'ın
+`INVALID_RESPONSE` atar. **0.3.0 Rewloy API 1.3.2'den üretilmiştir ve 1.3.0'ı ve sonrasını okur:** 1.3.0'ın
 her zaman gönderdiği alanlar zorunludur (`getMeta`'nın `environment`'ı, şubenin
 `qr` ve `frozen`'ı, kodun `channels`'ı …); 1.2.x'e karşı bu çağrılar aynı
 hatayı atar, 1.2.x sunucu için 0.2.4'te kalın.
@@ -1063,7 +1063,7 @@ RecordSaleData sale = rewloy.recordSale(serial, body, RequestOptions.builder().i
   key was taken back since: send a new key to write the receipt again.
   `card` and `reversed` are required fields since 0.2.4: the library reads Rewloy API 1.2.0
   and later, and against 1.1.x those calls throw `INVALID_RESPONSE`. **0.3.0
-  reads Rewloy API 1.3.0 and later** the same way: the fields 1.3.0 always sends
+  is generated from Rewloy API 1.3.2 and reads 1.3.0 and later** the same way: the fields 1.3.0 always sends
   are required (`getMeta`'s `environment`, a location's `qr` and `frozen`, a
   code's `channels` …), and against 1.2.x those calls throw `INVALID_RESPONSE`;
   stay on 0.2.4 for a 1.2.x server. For "can I

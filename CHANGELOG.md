@@ -7,13 +7,17 @@ This library's releases. The API's own changes are listed at the link above.
 
 ## 0.3.0 (2026-10-07)
 
-Rewloy API 1.3.0'ı izler (API sürümü, `info.version`): 298 işlem (0.2.4'te 260),
-hiçbiri kaldırılmadı. Beş kütüphane 0.3.0'da aynı sürüme gelir. Eklemeli;
+Rewloy API 1.3.2'yi izler (API sürümü, `info.version`; çekirdek etiketi v1.3.2): 298 işlem
+(0.2.4'te 260), hiçbiri kaldırılmadı. 1.3.0'dan beri tek fark `ErrorCode`'a eklenen altı
+koddur (aşağıya bakın). Beş kütüphane 0.3.0'da aynı sürüme gelir. Eklemeli;
 yalnız aşağıdaki "Breaking" notlarındaki üç nokta eskisinden farklıdır. Ayrıntılar
 aşağıda İngilizce; her yeni işlem, alan ve hata kodu tiplendi ve belgelendi.
 
-Follows Rewloy API 1.3.0 (the product version in `info.version`): 298
-operations (260 in 0.2.4), none removed. All five client libraries are 0.3.0.
+Follows Rewloy API 1.3.2 (the product version in `info.version`; core tag
+v1.3.2): 298 operations (260 in 0.2.4), none removed. Since 1.3.0 the document
+adds six values to the error-code list (`ErrorCode.DPA_DRAFT`, `SUMMARY_REQUIRED`,
+`PREVIEW_CHANGED`, `DAY_CHANGED`, `NOTHING_TO_SEND`, `NOTICE_TOO_LATE`; console
+codes, `/v1` never returns them) and rewords the description of `signup`. All five client libraries are 0.3.0.
 Additive; the only differences from 0.2.4 are the three points under "Breaking"
 at the end.
 
